@@ -22,6 +22,9 @@
 
 #define MAX_CMD 80
 
+void info(char* args){
+	printf("This is a WIP");
+}
 
 /* This is the main function of your project, and it will be run
  * first before all other functions.
@@ -29,7 +32,7 @@
 int main(int argc, char *argv[])
 {
 	char cmd_line[MAX_CMD];
-
+	char* dummy;
 
 	/* Parse args and open our image file */
 
@@ -45,11 +48,12 @@ int main(int argc, char *argv[])
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
 		printf("/]");
-		fgets(cmd_line,MAX_CMD,stdin);
+		dummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
 		if(strncmp(cmd_line,"info",4)==0) {
 			printf("Going to display info.\n");
+			info("FAKE INPUT");
 		}
 
 		else if(strncmp(cmd_line,"open",4)==0) {
@@ -85,6 +89,7 @@ int main(int argc, char *argv[])
 
 
 	}
+	printf("%s", dummy);
 
 	/* Close the file */
 
