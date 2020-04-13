@@ -1,7 +1,7 @@
 /***********************************************************
  * TODO: Fill in this area and delete this line
  * Name of program:
- * Authors:
+ * Authors: Benjamin Mankowitz 		Ari Roffe ads
  * Description:
  **********************************************************/
 
