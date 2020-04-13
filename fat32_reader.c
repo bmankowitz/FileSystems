@@ -1,8 +1,8 @@
 /***********************************************************
  * TODO: Fill in this area and delete this line
  * Name of program:
- * Authors: Benjamin Mankowitz 		Ari Roffe ads
- * Description:
+ * Authors: Benjamin Mankowitz 		Ari Roffe
+ * Description: FIXME: Need a descr
  **********************************************************/
 
 /* These are the included libraries.  You may need to add more. */
