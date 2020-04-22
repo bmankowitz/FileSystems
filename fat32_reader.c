@@ -98,7 +98,9 @@ int main(int argc, char *argv[])
 	char cmd_line[MAX_CMD];
 
 
-	/* Parse args and open our image file */
+	/* Parse args and open our image file
+	^^Ari is going to work on this 4/22^^
+	*/
 
 	/* Parse boot sector and get information */
 
