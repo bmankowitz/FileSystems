@@ -1,5 +1,4 @@
 /***********************************************************
- * TODO: Fill in this area and delete this line
  * Name of program:
  * Authors:  Benjamin Mankowitz 		Ari Roffe
  * Description: FIXME: Need a descr
@@ -19,24 +18,44 @@
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
 #define False 0
-#define LITTLE_ENDIAN 0 /* NOTE that fat32 is always little endian */
-#define BIG_ENDIAN 1 /* The local OS may be big endian */
+#define L_ENDIAN 0 /* NOTE that fat32 is always little endian */
+#define B_ENDIAN 1 /* The local OS may be big endian */
 
 #define MAX_CMD 80
 
+/* Register Functions and Global Variables */
+char* convertToLocalEndain(char* original);
+char* convertToFAT32Endian(char* original);
+void init(char* argv);
 
 /***********************************************************
  * HELPER FUNCTIONS
  * Use these for all IO operations TODO: and others?
  **********************************************************/
 
-byte[] convertToLocalEndian(byte[] original){
+char* convertToLocalEndian(char* original){
 	//TODO: IMPLEMENT ME
 	return NULL;
 }
-byte[] convertToFAT32Endian(byte[] original){
+char* convertToFAT32Endian(char* original){
 	//TODO: IMPLEMENT ME
 	return NULL;
+}
+
+/*
+ * init
+ * ----------------------------
+ *   open the file image and set it up
+ */
+void init(char* argv){
+
+	/* Parse args and open our image file */
+
+	/* Parse boot sector and get information */
+
+	/* Get root directory address */
+	//printf("Root addr is 0x%x\n", root_addr);
+	return;
 }
 
 /***********************************************************
@@ -56,7 +75,7 @@ byte[] convertToFAT32Endian(byte[] original){
  */
 void info(){
 	//TODO: IMPLEMENT ME
-	return NULL;
+	return ;
 }
 
 
@@ -69,11 +88,11 @@ void info(){
  */
 void ls(char* path){
 	//TODO: IMPLEMENT ME
-	return NULL;
+	return ;
 }
 
 /*
-* stat
+* filestat
 * ----------------------------
 *	Description: prints the size of the file or directory name, the attributes of the
 *	file or directory name, and the first cluster number of the file or directory name
@@ -82,10 +101,10 @@ void ls(char* path){
 *
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 */
-void stat(char* path){
+void filestat(char* path){
 
 	//TODO: IMPLEMENT ME
-	return NULL;
+	return ;
 }
 
 
@@ -97,13 +116,15 @@ int main(int argc, char *argv[])
 {
 	char cmd_line[MAX_CMD];
 
+	/*Dummy variable for the compiler */
+	char* dummy = "";
+	printf("%s", dummy);
+	/*End of dummy stuff */
 
-	/* Parse args and open our image file */
 
-	/* Parse boot sector and get information */
 
-	/* Get root directory address */
-	//printf("Root addr is 0x%x\n", root_addr);
+	init(*argv);
+
 
 
 	/* Main loop.  You probably want to create a helper function
@@ -112,11 +133,22 @@ int main(int argc, char *argv[])
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
 		printf("/]");
-		fgets(cmd_line,MAX_CMD,stdin);
+		dummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
 		if(strncmp(cmd_line,"info",4)==0) {
 			printf("Going to display info.\n");
+			info();
+		}
+
+		else if(strncmp(cmd_line, "stat",4)==0){
+			printf("Going to stat!\n");
+			filestat(NULL /* TODO: implement substring(6,80) */);
+		}
+		
+		else if(strncmp(cmd_line,"ls",2)==0) {
+			printf("Going to ls.\n");
+			ls(NULL /* TODO: implement substring(6,80) */);
 		}
 
 		else if(strncmp(cmd_line,"open",4)==0) {
@@ -133,10 +165,6 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
-		}
-
-		else if(strncmp(cmd_line,"ls",2)==0) {
-			printf("Going to ls.\n");
 		}
 
 		else if(strncmp(cmd_line,"read",4)==0) {
