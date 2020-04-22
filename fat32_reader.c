@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <dirent.h>
 
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
@@ -50,11 +51,13 @@ char* convertToFAT32Endian(char* original){
 void init(char* argv){
 
 	/* Parse args and open our image file */
+	int fd = fopen(argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 
 	/* Parse boot sector and get information */
 
 	/* Get root directory address */
-	//printf("Root addr is 0x%x\n", root_addr);
+	
+	printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
 
