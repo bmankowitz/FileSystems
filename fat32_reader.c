@@ -1,7 +1,7 @@
 /***********************************************************
  * TODO: Fill in this area and delete this line
  * Name of program:
- * Authors: Benjamin Mankowitz 		Ari Roffe
+ * Authors:  Benjamin Mankowitz 		Ari Roffe
  * Description: FIXME: Need a descr
  **********************************************************/
 
@@ -19,20 +19,84 @@
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
 #define False 0
+#define LITTLE_ENDIAN 0 /* NOTE that fat32 is always little endian */
+#define BIG_ENDIAN 1 /* The local OS may be big endian */
 
 #define MAX_CMD 80
 
-void info(char* args){
-	printf("This is a WIP");
+
+/***********************************************************
+ * HELPER FUNCTIONS
+ * Use these for all IO operations TODO: and others?
+ **********************************************************/
+
+byte[] convertToLocalEndian(byte[] original){
+	//TODO: IMPLEMENT ME
+	return NULL;
+}
+byte[] convertToFAT32Endian(byte[] original){
+	//TODO: IMPLEMENT ME
+	return NULL;
 }
 
-/* This is the main function of your project, and it will be run
- * first before all other functions.
+/***********************************************************
+ * CMD FUNCTIONS
+ * Implementation of all command line arguments
+ **********************************************************/
+
+/*
+ * info
+ * ----------------------------
+ *   Description: prints out information about the following fields in both hex and base 10: 
+ *		BPB_BytesPerSec
+ *		BPB_SecPerClus 
+ *	 	BPB_RsvdSecCnt 
+ *	 	BPB_NumFATS
+ *	 	BPB_FATSz32 
  */
+void info(){
+	//TODO: IMPLEMENT ME
+	return NULL;
+}
+
+
+/*
+ * ls
+ * ----------------------------
+ *	Description: lists the contents of DIR_NAME, including “.” and “..”.
+ *	
+ *	path: the path to examine  
+ */
+void ls(char* path){
+	//TODO: IMPLEMENT ME
+	return NULL;
+}
+
+/*
+* stat
+* ----------------------------
+*	Description: prints the size of the file or directory name, the attributes of the
+*	file or directory name, and the first cluster number of the file or directory name
+*	if it is in the present working directory.  Return an error if FILE_NAME/DIR_NAME
+*	does not exist. (Note: The size of a directory will always be zero.) 
+*
+*	path: the path to examine. Determine if this is a file or directory and print accordingly
+*/
+void stat(char* path){
+
+	//TODO: IMPLEMENT ME
+	return NULL;
+}
+
+
+/***********************************************************
+ * MAIN
+ * Program main
+ **********************************************************/
 int main(int argc, char *argv[])
 {
 	char cmd_line[MAX_CMD];
-	char* dummy;
+
 
 	/* Parse args and open our image file */
 
@@ -48,12 +112,11 @@ int main(int argc, char *argv[])
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
 		printf("/]");
-		dummy = fgets(cmd_line,MAX_CMD,stdin);
+		fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
 		if(strncmp(cmd_line,"info",4)==0) {
 			printf("Going to display info.\n");
-			info("FAKE INPUT");
 		}
 
 		else if(strncmp(cmd_line,"open",4)==0) {
@@ -89,7 +152,6 @@ int main(int argc, char *argv[])
 
 
 	}
-	printf("%s", dummy);
 
 	/* Close the file */
 
