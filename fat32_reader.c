@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
 
 
 
-	init(*argv);
+	init(*argv); /*for Ari to work on */
 
 
 
