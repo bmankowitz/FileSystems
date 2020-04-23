@@ -25,20 +25,22 @@
 #define MAX_CMD 80
 
 //image file being made global, represented by the descriptor supplied when first access in init
-FILE* fd;
+FILE *fd;
 
 	/* Register Functions and Global Variables */
 	char *
 	convertToLocalEndain(char *original);
 char* convertToFAT32Endian(char* original);
 void init(char* argv);
+void print_convert_to_Hex(int n);
 
-/***********************************************************
+	/***********************************************************
  * HELPER FUNCTIONS
  * Use these for all IO operations TODO: and others?
  **********************************************************/
 
-char* convertToLocalEndian(char* original){
+	char *convertToLocalEndian(char *original)
+{
 	//TODO: IMPLEMENT ME
 	return NULL;
 }
@@ -55,13 +57,12 @@ char* convertToFAT32Endian(char* original){
 void init(char* argv){
 
 	/* Parse args and open our image file */
-	fd = fopen(argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+	fd = fopen(&argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 
-	/* Parse boot sector and get information */
+	/* Parse boot sector and get information, Ari did this in the info method itself, possibly move to here*/
 
-	/* Get root directory address */
-
-	printf("Root addr is 0x%x\n", root_addr);
+	/* TODO: Get root directory address */
+	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
 
@@ -90,16 +91,19 @@ void info(){
 	int BPB_NumFATS;
 	int BPB_FATSz32;
 
-	fseek(fp, 0xB, SEEK_SET);//SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
+	fseek(fd, 0xB, SEEK_SET);//SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
 	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
-	fread(&BPB_BytesPerSec, 2, 1, fd);//one element that is 2 bytes, 2 Hex's on the HexEdit tool
-	fread(&BPB_SecPerClus, 1, 1, fd);//starts at 0xD
-	fread(&BPB_RsvdSecCnt, 2, 1, fd);
-	fread(&BPB_NumFATS, 1, 1, fd);//"next line"
+	size_t read1 = fread(&BPB_BytesPerSec, 2, 1, fd);//one element that is 2 bytes, 2 Hex's on the HexEdit tool
+	size_t read2 = fread(&BPB_SecPerClus, 1, 1, fd);//starts at 0xD
+	size_t read3 = fread(&BPB_RsvdSecCnt, 2, 1, fd);
+	size_t read4 = fread(&BPB_NumFATS, 1, 1, fd);//"next line"
 	
 	//BPB_FATSz32 offset is 0x2C from the SEEK_SET, Kelly's slides/hints for project
 	fseek(fd, 0x24, SEEK_SET);
-	fread(&BPB_FATSz32, 4, 1, fd);
+	size_t read5 = fread(&BPB_FATSz32, 4, 1, fd);
+
+	//since they all read 1 element, this should be true
+	if((read1 & read2 & read3 & read4 & read5) != 1) printf("error");
 
 	//TODO: BPB_FATSz32
 
@@ -142,8 +146,11 @@ void print_convert_to_Hex(int n) {
 	}
 
 	// for litte-endian hex
-	for (int j = i - 1; j >= 0; j--)
-		printf('Hex: %x%n', hexaDeciNum[j]);//print out the hex, skip line
+	for (int j = i - 1; j >= 0; j--){
+		printf("Hex: %c", hexaDeciNum[j]);//print out the hex, skip line
+	}
+	printf("\n");
+	
 }
 
 /*
