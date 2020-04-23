@@ -38,15 +38,44 @@ void print_convert_to_Hex(int n);
  * HELPER FUNCTIONS
  * Use these for all IO operations TODO: and others?
  **********************************************************/
+int localEndian = -1;
 
-	char *convertToLocalEndian(char *original)
-{
-	//TODO: IMPLEMENT ME
-	return NULL;
+/*
+ * endian functions
+ * ----------------------------
+ *   determineLocalEndian is called during init()
+ * 	 Both of the converting functions take a 32-bit word and convert 
+ */
+
+void determineLocalEndian(){
+    int i = 1;
+    char ∗p = (char ∗)&i;
+
+    if (p[0] == 1)
+        localEndian = L_ENDIAN;
+    else
+        localEndian = B_ENDIAN;
+}
+
+char* convertToLocalEndian(char* original){
+	if(localEndian == L_ENDIAN){
+		//there is nothing to do
+		return original;
+	}
+	else{
+		//To convert from little endian to big endian
+		return htonl(original);
+	}
 }
 char* convertToFAT32Endian(char* original){
-	//TODO: IMPLEMENT ME
-	return NULL;
+	if(localEndian == L_ENDIAN){
+		//there is nothing to do
+		return original;
+	}
+	else{
+		//convert from big endian to little endian
+		return ntohl(original);
+	}
 }
 
 /*
@@ -55,6 +84,8 @@ char* convertToFAT32Endian(char* original){
  *   open the file image and set it up
  */
 void init(char* argv){
+	/* Determine whether our machine is big endian or little endian */
+	determineLocalEndian();
 
 	/* Parse args and open our image file */
 	fd = fopen(&argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
