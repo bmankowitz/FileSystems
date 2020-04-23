@@ -24,8 +24,12 @@
 
 #define MAX_CMD 80
 
-/* Register Functions and Global Variables */
-char* convertToLocalEndain(char* original);
+//image file being made global, represented by the descriptor supplied when first access in init
+FILE* fd;
+
+	/* Register Functions and Global Variables */
+	char *
+	convertToLocalEndain(char *original);
 char* convertToFAT32Endian(char* original);
 void init(char* argv);
 
@@ -51,12 +55,12 @@ char* convertToFAT32Endian(char* original){
 void init(char* argv){
 
 	/* Parse args and open our image file */
-	int fd = fopen(argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+	fd = fopen(argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 
 	/* Parse boot sector and get information */
 
 	/* Get root directory address */
-	
+
 	printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
@@ -70,17 +74,77 @@ void init(char* argv){
  * info
  * ----------------------------
  *   Description: prints out information about the following fields in both hex and base 10: 
- *		BPB_BytesPerSec
- *		BPB_SecPerClus 
- *	 	BPB_RsvdSecCnt 
- *	 	BPB_NumFATS
- *	 	BPB_FATSz32 
+ *		BPB_BytesPerSec == https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BPB
+ *		BPB_SecPerClus, sector/cluster == see the above wiki in the same table
+ *	 	BPB_RsvdSecCnt, # of reserved sector,
+ *	 	BPB_NumFATS, "Number of File Allocation Tables"
+ *	 	BPB_FATSz32, Sectors per Fat
+
+ *		USING THE HEXEDIT TOOL ON THE WEBSITE https://hexed.it/ AND PASTING THE fat32.img FILE
  */
 void info(){
-	//TODO: IMPLEMENT ME
+	/*pointers for the fread() function*/
+	int BPB_BytesPerSec;
+	int BPB_SecPerClus;
+	int BPB_RsvdSecCnt;
+	int BPB_NumFATS;
+	int BPB_FATSz32;
+
+	fseek(fp, 0xB, SEEK_SET);//SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
+	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
+	fread(&BPB_BytesPerSec, 2, 1, fd);//one element that is 2 bytes, 2 Hex's on the HexEdit tool
+	fread(&BPB_SecPerClus, 1, 1, fd);//starts at 0xD
+	fread(&BPB_RsvdSecCnt, 2, 1, fd);
+	fread(&BPB_NumFATS, 1, 1, fd);//"next line"
+	
+	//BPB_FATSz32 offset is 0x2C from the SEEK_SET, Kelly's slides/hints for project
+	fseek(fd, 0x24, SEEK_SET);
+	fread(&BPB_FATSz32, 4, 1, fd);
+
+	//TODO: BPB_FATSz32
+
+	//Now print out all the info
+	printf("Bytes per Sector: %d", BPB_BytesPerSec);
+	print_convert_to_Hex(BPB_BytesPerSec);
+
+	printf("Sector per Cluster: %d", BPB_SecPerClus);
+	print_convert_to_Hex(BPB_SecPerClus);
+
+	printf("Count of Reserves Logical Sectors: %d", BPB_RsvdSecCnt);
+	print_convert_to_Hex(BPB_RsvdSecCnt);
+
+	printf("Number of File Allocation Tables: %d", BPB_NumFATS);
+	print_convert_to_Hex(BPB_NumFATS);
+
+	printf("Number of Sectors per FAT: %d", BPB_FATSz32);
+	print_convert_to_Hex(BPB_FATSz32);
+
 	return ;
 }
 
+// function to convert decimal to hexadecimal
+void print_convert_to_Hex(int n) {
+	char hexaDeciNum[100];
+
+	int i = 0;
+	while (n != 0) {
+		int temp = 0;
+		temp = n % 16;//get remainder
+		if (temp < 10){
+			hexaDeciNum[i] = temp + 48;
+			i++;
+		}
+		else{
+			hexaDeciNum[i] = temp + 55;
+			i++;
+		}
+		n = n / 16;
+	}
+
+	// for litte-endian hex
+	for (int j = i - 1; j >= 0; j--)
+		printf('Hex: %x%n', hexaDeciNum[j]);//print out the hex, skip line
+}
 
 /*
  * ls
