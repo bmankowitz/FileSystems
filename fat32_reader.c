@@ -48,6 +48,18 @@ int BPB_NumFATS;
 int BPB_FATSz32;
 int BPB_RootCluster;
 int first_sector_of_cluster;
+char  * dir_name;
+
+/**
+ * Making the Directory struct 
+ * */
+	struct directory{
+		char DIR_Name[11];
+		uint8_t DIR_Attr;//one byte
+		uint16_t DIR_FstClusHi;
+		uint16_t DIR_FstClusLo;
+		uint32_t DIR_FileSize;
+	};
 
 	/*
  * endian functions
@@ -119,7 +131,8 @@ void init(char* argv){
 	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
 	first_sector_of_cluster = ((BPB_RootCluster - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
-
+	fseek(fp, first_sector_of_cluster, SEEK_SET);//at the first sector of data
+	fread(dir_name, 32, 16, fp);//shorthand for 512 bytes 32*16=512
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
