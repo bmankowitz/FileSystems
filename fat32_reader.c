@@ -46,16 +46,20 @@ int BPB_SecPerClus;
 int BPB_RsvdSecCnt;
 int BPB_NumFATS;
 int BPB_FATSz32;
+int BPB_RootCluster;
+int first_sector_of_cluster;
 
-/*
+	/*
  * endian functions
  * ----------------------------
  *   determineLocalEndian is called during init()
  * 	 Both of the converting functions take a 32-bit word and convert 
  */
 
-void determineLocalEndian(){
-    int i = 1;
+	void
+	determineLocalEndian()
+{
+	int i = 1;
     char ∗p = (char ∗)&i;
 
     if (p[0] == 1)
@@ -102,14 +106,20 @@ void init(char* argv){
 	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 	size_t read1 = fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
 	size_t read2 = fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
-	size_t read3 = fread(&BPB_RsvdSecCnt, 2, 1, fd);
+	size_t read3 = fread(&BPB_RsvdSecCnt, 2, 1, fd);// number of reserved sectors, aka number of sectors before "data" sectors
 	size_t read4 = fread(&BPB_NumFATS, 1, 1, fd); //"next line"
 
 	//BPB_FATSz32 offset is 0x2C from the SEEK_SET, Kelly's slides/hints for project
 	fseek(fd, 0x24, SEEK_SET);
 	size_t read5 = fread(&BPB_FATSz32, 4, 1, fd);
 
-	/* TODO: Get root directory address */
+	/*Get root directory address */
+	fseek(fp, 0x2C, SEEK_SET);
+	fread(&BPB_RootCluster, 4, 1, fp);
+	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
+	first_sector_of_cluster = ((BPB_RootCluster - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
+
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
