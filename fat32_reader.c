@@ -49,17 +49,20 @@ int BPB_FATSz32;
 int BPB_RootCluster;
 int first_sector_of_cluster;
 char  * dir_name;
+int starting_dir;
 
-/**
+	/**
  * Making the Directory struct 
  * */
 	struct directory{
-		char DIR_Name[11];
-		uint8_t DIR_Attr;//one byte
-		uint16_t DIR_FstClusHi;
-		uint16_t DIR_FstClusLo;
-		uint32_t DIR_FileSize;
-	};
+	char DIR_Name[11];
+	uint8_t DIR_Attr; //one byte
+	uint16_t DIR_FstClusHi;
+	uint16_t DIR_FstClusLo;
+	uint32_t DIR_FileSize;
+};
+
+	struct directory dir[10];//this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
 
 	/*
  * endian functions
@@ -128,11 +131,14 @@ void init(char* argv){
 	/*Get root directory address */
 	fseek(fp, 0x2C, SEEK_SET);
 	fread(&BPB_RootCluster, 4, 1, fp);
+	starting_dir = BPB_RootCluster;//start at the root cluster and call commands from here
+
 	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
-	first_sector_of_cluster = ((BPB_RootCluster - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
+	first_sector_of_cluster = ((starting_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	fseek(fp, first_sector_of_cluster, SEEK_SET);//at the first sector of data
-	fread(dir_name, 32, 16, fp);//shorthand for 512 bytes 32*16=512
+	//reference the first dir, dir[0] for the root directory
+	fread(dir[0], 32, 16, fp);//shorthand for 512 bytes 32*16=512, read into the dir struct
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
@@ -208,8 +214,18 @@ void print_convert_to_Hex(int n) {
  *	path: the path to examine  
  */
 void ls(char* path){
-	//TODO: IMPLEMENT ME
-	return ;
+	int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
+	int change = (starting_dir - 2 * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
+
+	//skip to "change" in the file but don't read yet
+	fseek(fd, change, SEEK_SET);
+
+	//TODO: go thru each directory steming from start_dir
+	//this is the dir we begin the program in and it changes based on the cd command
+	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
+	
+	 return;
 }
 
 /*
