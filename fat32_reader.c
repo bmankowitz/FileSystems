@@ -239,9 +239,28 @@ void ls(char* path){
 }
 
 void change_directory(char *would_like_to_cd_into){
-	//first get the cluster of this directory
-	int cluster_hit;
-	for(int i = 0; i < 10; i++){
+	int cluster_hit = -1;//this indicates the dir is not found
+	int change_to_cluster;
+	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
+	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
+	if (strcmp(would_like_to_cd_into, "..") == 0)
+	{
+		for (int i = 0; i < 10; i++)
+		{
+			int comp = strcmp(dir[i].DIR_Name, "..", 2);
+			if (!comp)
+			{
+				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
+				present_dir = dir[i].DIR_FstClusLo;
+				fseek(fd, change_to_cluster, SEEK_SET);
+				fread(&dir[0], 32, 16, fd);
+				return; //stop here
+			}
+		}
+	}
+	//when we aren't "moving up" do the following
+	//first examine if the dir we want to cd into exists
+	for (int i = 0; i < 10; i++){
 		char *directory = malloc(11);
 		memset(directory, '\0', 11);
 		memcpy(directory, dir[i].DIR_Name, 11);
@@ -249,16 +268,18 @@ void change_directory(char *would_like_to_cd_into){
 		int bool = strncmp(directory, would_like_to_cd_into, 11);
 		if(!bool){
 			cluster_hit = dir[i].DIR_FstClusLo;//see page 25 for more info
+			break;
 		}
 	}
-
-	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."*/
-
+	if (cluster_hit == -1){
+		printf("Directory not found");
+		return;
+	}
 	//to what are we changing to? first see if its a name (ie not '..')
 	//refer to the ls command for similar structure from here
 	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
-	int change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
+	change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
 
 	present_dir = cluster;
 	fseek(fd, change_to_cluster, SEEK_SET);
@@ -275,9 +296,7 @@ void change_directory(char *would_like_to_cd_into){
 *
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 */
-	void
-	filestat(char *path)
-{
+void filestat(char *path){
 
 	//TODO: IMPLEMENT ME
 	return;
