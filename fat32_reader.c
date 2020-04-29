@@ -62,7 +62,8 @@ int starting_dir;
 	uint32_t DIR_FileSize;
 };
 
-	struct directory dir[10];//this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
+struct directory dir[10];
+//^this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
 
 	/*
  * endian functions
@@ -138,7 +139,7 @@ void init(char* argv){
 	first_sector_of_cluster = ((starting_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	fseek(fp, first_sector_of_cluster, SEEK_SET);//at the first sector of data
 	//reference the first dir, dir[0] for the root directory
-	fread(dir[0], 32, 16, fp);//shorthand for 512 bytes 32*16=512, read into the dir struct
+	fread(&dir[0], 32, 16, fp);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
@@ -224,8 +225,26 @@ void ls(char* path){
 	//TODO: go thru each directory steming from start_dir
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
-	
-	 return;
+	for(int i = 0; i < 10; i++){
+		fread(&dir[i], 32, 1, fd);//one item, 32 bits
+		/* for reference on the dir_attr meanings, 
+		see piazza and notes for which we should include in our display of ls, I put a -> next to them for reference later
+			->ATTR_READ_ONLY   	0x01
+			ATTR_HIDDEN 		0x02
+			ATTR_SYSTEM 		0x04
+			ATTR_VOLUME_ID		0x08
+			->ATTR_DIRECTORY	0x10
+			->ATTR_ARCHIVE  	0x20
+		*/
+		if((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == 0x1 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20)){
+			//copy the characters into a new char to display it without tampering the img file WHATSOEVER 
+			char *something_to_be_listed = malloc(11);
+			memset(something_to_be_listed, '\0', 11);//make empty string
+			//copy from DIR_Name...I think this is short...confirmation needed
+			memcpy(something_to_be_listed, dir[i].DIR_Name, 11);//this is taka the copying
+			printf("%s\t", something_to_be_listed);//this seperates the directories by follow up tab
+		}
+	}
 }
 
 /*
@@ -238,10 +257,11 @@ void ls(char* path){
 *
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 */
-void filestat(char* path){
+		void filestat(char *path)
+		{
 
-	//TODO: IMPLEMENT ME
-	return ;
+			//TODO: IMPLEMENT ME
+			return;
 }
 
 
