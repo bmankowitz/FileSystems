@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
 			printf("Going to ls.\n");
-			ls(NULL /* TODO: implement substring(6,80) */);
+			ls(*cmd_line[3]);
 		}
 
 		else if(strncmp(cmd_line,"open",4)==0) {
