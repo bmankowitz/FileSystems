@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <arpa/inet.h>
 
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
@@ -120,26 +121,26 @@ void init(char* argv){
 	/* Parse boot sector and get information, move to here*/
 	fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
 	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
-	size_t read1 = fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
-	size_t read2 = fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
-	size_t read3 = fread(&BPB_RsvdSecCnt, 2, 1, fd);// number of reserved sectors, aka number of sectors before "data" sectors
-	size_t read4 = fread(&BPB_NumFATS, 1, 1, fd); //"next line"
+	fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
+	fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
+	fread(&BPB_RsvdSecCnt, 2, 1, fd);// number of reserved sectors, aka number of sectors before "data" sectors
+	fread(&BPB_NumFATS, 1, 1, fd); //"next line"
 
 	//BPB_FATSz32 offset is 0x2C from the SEEK_SET, Kelly's slides/hints for project
 	fseek(fd, 0x24, SEEK_SET);
-	size_t read5 = fread(&BPB_FATSz32, 4, 1, fd);
+	fread(&BPB_FATSz32, 4, 1, fd);
 
 	/*Get root directory address */
-	fseek(fp, 0x2C, SEEK_SET);
-	fread(&BPB_RootCluster, 4, 1, fp);
+	fseek(fd, 0x2C, SEEK_SET);
+	fread(&BPB_RootCluster, 4, 1, fd);
 	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
 
 	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
 	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
-	fseek(fp, first_sector_of_cluster, SEEK_SET);//at the first sector of data
+	fseek(fd, first_sector_of_cluster, SEEK_SET);//at the first sector of data
 	//reference the first dir, dir[0] for the root directory
-	fread(&dir[0], 32, 16, fp);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+	fread(&dir[0], 32, 16, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
@@ -163,15 +164,25 @@ void init(char* argv){
  */
 void info(){
 	//Now print out all the info
-	printf("BPB_BytesPerSec is: %s, %d", print_convert_to_Hex(BPB_BytesPerSec),  BPB_BytesPerSec);
-	printf("BPB_SecPerClus: %s, %d", print_convert_to_Hex(BPB_SecPerClus) , BPB_SecPerClus);
-	printf("BPB_RsvdSecCnt: %s, %d", print_convert_to_Hex(BPB_RsvdSecCnt), BPB_RsvdSecCnt);
-	printf("BPB_NumFATS: %s, %d", print_convert_to_Hex(BPB_NumFATS), BPB_NumFATS);
-	printf("BPB_FATSz32: %s, %d", print_convert_to_Hex(BPB_FATSz32), BPB_FATSz32);
+	char buffer[20];
+	itoa(BPB_BytesPerSec, buffer, 16);
+	printf("BPB_BytesPerSec is: %s, %d", buffer, BPB_BytesPerSec);
+
+	itoa(BPB_SecPerClus, buffer, 16);
+	printf("BPB_SecPerClus: %s, %d", buffer, BPB_SecPerClus);
+
+	itoa(BPB_RsvdSecCnt, buffer, 16);
+	printf("BPB_RsvdSecCnt: %s, %d", buffer, BPB_RsvdSecCnt);
+
+	itoa(BPB_NumFATS, buffer, 16);
+	printf("BPB_NumFATS: %s, %d", buffer, BPB_NumFATS);
+
+	itoa(BPB_FATSz32, buffer, 16);
+	printf("BPB_FATSz32: %s, %d", buffer, BPB_FATSz32);
 }
 
 // function to convert decimal to hexadecimal
-void print_convert_to_Hex(int n) {
+/*char* print_convert_to_Hex(int n) {
 	char hexaDeciNum[100];
 
 	int i = 0;
@@ -188,15 +199,15 @@ void print_convert_to_Hex(int n) {
 		}
 		n = n / 16;
 	}
-	char result[];
+	char *result;
 	result = malloc(10);
 	// for litte-endian hex
 	for (int j = i - 1; j >= 0; j--){
-		result[j] = chahexaDeciNum[j];//print out the hex, skip line
+		result[j] = hexaDeciNum[j];//print out the hex, skip line
 	}
-	return result;
+	return &result;
 	
-}
+}*/
 
 /*
  * ls
@@ -247,7 +258,7 @@ void change_directory(char *would_like_to_cd_into){
 	{
 		for (int i = 0; i < 10; i++)
 		{
-			int comp = strcmp(dir[i].DIR_Name, "..", 2);
+			int comp = strncmp(dir[i].DIR_Name, "..", 2);
 			if (!comp)
 			{
 				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
@@ -281,7 +292,7 @@ void change_directory(char *would_like_to_cd_into){
 	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
 	change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
 
-	present_dir = cluster;
+	present_dir = change_to_cluster;
 	fseek(fd, change_to_cluster, SEEK_SET);
 	fread(&dir[0], 32, 16, fd);//this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
 }
@@ -339,7 +350,7 @@ int main(int argc, char *argv[])
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
 			printf("Going to ls.\n");
-			ls(*cmd_line[3]);
+			ls(&cmd_line[3]);
 		}
 
 		else if(strncmp(cmd_line,"open",4)==0) {
@@ -356,7 +367,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
-			change_directory(*cmd_line[3]);
+			change_directory(&cmd_line[3]);
 		}
 
 		else if(strncmp(cmd_line,"read",4)==0) {
