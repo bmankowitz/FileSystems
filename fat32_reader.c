@@ -49,7 +49,7 @@ int BPB_FATSz32;
 int BPB_RootCluster;
 int first_sector_of_cluster;
 char  * dir_name;
-int starting_dir;
+int present_dir;//not always going to be first dir, meaning once we call 'cd' this will be the present directory
 
 	/**
  * Making the Directory struct 
@@ -132,11 +132,11 @@ void init(char* argv){
 	/*Get root directory address */
 	fseek(fp, 0x2C, SEEK_SET);
 	fread(&BPB_RootCluster, 4, 1, fp);
-	starting_dir = BPB_RootCluster;//start at the root cluster and call commands from here
+	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
 
 	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
-	first_sector_of_cluster = ((starting_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
+	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	fseek(fp, first_sector_of_cluster, SEEK_SET);//at the first sector of data
 	//reference the first dir, dir[0] for the root directory
 	fread(&dir[0], 32, 16, fp);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
@@ -163,21 +163,11 @@ void init(char* argv){
  */
 void info(){
 	//Now print out all the info
-	printf("Bytes per Sector: %d", BPB_BytesPerSec);
-	print_convert_to_Hex(BPB_BytesPerSec);
-
-	printf("Sector per Cluster: %d", BPB_SecPerClus);
-	print_convert_to_Hex(BPB_SecPerClus);
-
-	printf("Count of Reserves Logical Sectors: %d", BPB_RsvdSecCnt);
-	print_convert_to_Hex(BPB_RsvdSecCnt);
-
-	printf("Number of File Allocation Tables: %d", BPB_NumFATS);
-	print_convert_to_Hex(BPB_NumFATS);
-
-	printf("Number of Sectors per FAT: %d", BPB_FATSz32);
-	print_convert_to_Hex(BPB_FATSz32);
-	return ;
+	printf("BPB_BytesPerSec is: %s, %d", print_convert_to_Hex(BPB_BytesPerSec),  BPB_BytesPerSec);
+	printf("BPB_SecPerClus: %s, %d", print_convert_to_Hex(BPB_SecPerClus) , BPB_SecPerClus);
+	printf("BPB_RsvdSecCnt: %s, %d", print_convert_to_Hex(BPB_RsvdSecCnt), BPB_RsvdSecCnt);
+	printf("BPB_NumFATS: %s, %d", print_convert_to_Hex(BPB_NumFATS), BPB_NumFATS);
+	printf("BPB_FATSz32: %s, %d", print_convert_to_Hex(BPB_FATSz32), BPB_FATSz32);
 }
 
 // function to convert decimal to hexadecimal
@@ -198,12 +188,13 @@ void print_convert_to_Hex(int n) {
 		}
 		n = n / 16;
 	}
-
+	char result[];
+	result = malloc(10);
 	// for litte-endian hex
 	for (int j = i - 1; j >= 0; j--){
-		printf("Hex: %c", hexaDeciNum[j]);//print out the hex, skip line
+		result[j] = chahexaDeciNum[j];//print out the hex, skip line
 	}
-	printf("\n");
+	return result;
 	
 }
 
@@ -217,7 +208,7 @@ void print_convert_to_Hex(int n) {
 void ls(char* path){
 	int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
-	int change = (starting_dir - 2 * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
+	int change = (present_dir - 2 * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
 
 	//skip to "change" in the file but don't read yet
 	fseek(fd, change, SEEK_SET);
@@ -247,7 +238,34 @@ void ls(char* path){
 	}
 }
 
-/*
+void change_directory(char *would_like_to_cd_into){
+	//first get the cluster of this directory
+	int cluster_hit;
+	for(int i = 0; i < 10; i++){
+		char *directory = malloc(11);
+		memset(directory, '\0', 11);
+		memcpy(directory, dir[i].DIR_Name, 11);
+		//compare variable 'directory' with what we'd like to cd into, namely the parameter provided in the method
+		int bool = strncmp(directory, would_like_to_cd_into, 11);
+		if(!bool){
+			cluster_hit = dir[i].DIR_FstClusLo;//see page 25 for more info
+		}
+	}
+
+	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."*/
+
+	//to what are we changing to? first see if its a name (ie not '..')
+	//refer to the ls command for similar structure from here
+	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
+	int change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
+
+	present_dir = cluster;
+	fseek(fd, change_to_cluster, SEEK_SET);
+	fread(&dir[0], 32, 16, fd);//this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
+}
+
+	/*
 * filestat
 * ----------------------------
 *	Description: prints the size of the file or directory name, the attributes of the
@@ -257,11 +275,12 @@ void ls(char* path){
 *
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 */
-		void filestat(char *path)
-		{
+	void
+	filestat(char *path)
+{
 
-			//TODO: IMPLEMENT ME
-			return;
+	//TODO: IMPLEMENT ME
+	return;
 }
 
 
@@ -278,11 +297,7 @@ int main(int argc, char *argv[])
 	printf("%s", dummy);
 	/*End of dummy stuff */
 
-
-
 	init(*argv); /*for Ari to work on */
-
-
 
 	/* Main loop.  You probably want to create a helper function
        for each command besides quit. */
@@ -322,6 +337,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
+			change_directory(*cmd_line[3]);
 		}
 
 		else if(strncmp(cmd_line,"read",4)==0) {
