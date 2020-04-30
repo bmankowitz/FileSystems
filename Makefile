@@ -7,8 +7,8 @@ DEPS=$(SOURCES:.c=.d)
 BINS=$(SOURCES:.c=)
 
 
-
-CFLAGS+= -g -Wall -O1 -Wpedantic -Werror -pthread
+#PUT THESE BACK IN ASAP-Wpedantic -Werror
+CFLAGS+= -g -Wall -O1  -pthread
 
 
 

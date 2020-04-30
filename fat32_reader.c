@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -24,6 +23,7 @@
 #define B_ENDIAN 1 /* The local OS may be big endian */
 
 #define MAX_CMD 80
+#define MAX_DIR 16
 
 //image file being made global, represented by the descriptor supplied when first access in init
 FILE *fd;
@@ -54,6 +54,7 @@ int present_dir;//not always going to be first dir, meaning once we call 'cd' th
 
 	/**
  * Making the Directory struct 
+ * This is technically also a file
  * */
 	struct directory{
 	char DIR_Name[11];
@@ -63,7 +64,7 @@ int present_dir;//not always going to be first dir, meaning once we call 'cd' th
 	uint32_t DIR_FileSize;
 };
 
-struct directory dir[10];
+struct directory dir[MAX_DIR];
 //^this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
 
 	/*
@@ -74,10 +75,9 @@ struct directory dir[10];
  */
 
 	void
-	determineLocalEndian()
-{
+	determineLocalEndian() {
 	int i = 1;
-    char ∗p = (char ∗)&i;
+    char *p = (char *)&i;
 
     if (p[0] == 1)
         localEndian = L_ENDIAN;
@@ -92,7 +92,7 @@ char* convertToLocalEndian(char* original){
 	}
 	else{
 		//To convert from little endian to big endian
-		return htonl(original);
+		return htonl((uint32_t) original);
 	}
 }
 char* convertToFAT32Endian(char* original){
@@ -102,7 +102,7 @@ char* convertToFAT32Endian(char* original){
 	}
 	else{
 		//convert from big endian to little endian
-		return ntohl(original);
+		return ntohl((uint32_t) original);
 	}
 }
 
@@ -308,8 +308,18 @@ void change_directory(char *would_like_to_cd_into){
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 */
 void filestat(char *path){
-
-	//TODO: IMPLEMENT ME
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strcmp(path, dir[i].DIR_Name)){
+			//found match!
+			printf("Size is %d\n", dir[i].DIR_FileSize);
+			printf("Attributes %d\n", dir[i].DIR_Attr);//TODO: print in string
+			//TODO: calculate the cluster number
+			//printf("Next cluster number is %d\n", )
+			return;
+		}
+	}
+	//File not found
+	printf("Error: file/directory does not exist\n");
 	return;
 }
 
@@ -345,7 +355,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line, "stat",4)==0){
 			printf("Going to stat!\n");
-			filestat(NULL /* TODO: implement substring(6,80) */);
+			filestat(&cmd_line[5]);//TODO
 		}
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
