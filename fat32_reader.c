@@ -164,21 +164,21 @@ void init(char* argv){
  */
 void info(){
 	//Now print out all the info
-	char buffer[20];
-	itoa(BPB_BytesPerSec, buffer, 16);
-	printf("BPB_BytesPerSec is: %s, %d", buffer, BPB_BytesPerSec);
+	char buff[20];
+	sprintf(buff, "%04x", BPB_BytesPerSec);
+	printf("BPB_BytesPerSec is: %s %d\n", buff, BPB_BytesPerSec);
 
-	itoa(BPB_SecPerClus, buffer, 16);
-	printf("BPB_SecPerClus: %s, %d", buffer, BPB_SecPerClus);
+	sprintf(buff, "%04x", BPB_SecPerClus);
+	printf("BPB_SecPerClus: %s %d\n", buff, BPB_SecPerClus);
 
-	itoa(BPB_RsvdSecCnt, buffer, 16);
-	printf("BPB_RsvdSecCnt: %s, %d", buffer, BPB_RsvdSecCnt);
+	sprintf(buff, "%04x", BPB_RsvdSecCnt);
+	printf("BPB_RsvdSecCnt: %s %d\n", buff, BPB_RsvdSecCnt);
 
-	itoa(BPB_NumFATS, buffer, 16);
-	printf("BPB_NumFATS: %s, %d", buffer, BPB_NumFATS);
+	sprintf(buff, "%04x", BPB_NumFATS);
+	printf("BPB_NumFATS: %s %d\n", buff, BPB_NumFATS);
 
-	itoa(BPB_FATSz32, buffer, 16);
-	printf("BPB_FATSz32: %s, %d", buffer, BPB_FATSz32);
+	sprintf(buff, "%04x", BPB_FATSz32);
+	printf("BPB_FATSz32: %s %d\n", buff, BPB_FATSz32);
 }
 
 // function to convert decimal to hexadecimal
