@@ -25,6 +25,14 @@
 #define MAX_CMD 80
 #define MAX_DIR 16
 
+#define ATTR_READ_ONLY 0x01
+#define ATTR_HIDDEN 0x02
+#define ATTR_SYSTEM 0x04
+#define ATTR_VOLUME_ID 0x08
+#define ATTR_DIRECTORY 0x10
+#define ATTR_ARCHIVE 0x20
+
+
 //image file being made global, represented by the descriptor supplied when first access in init
 FILE *fd;
 
@@ -313,12 +321,37 @@ void change_directory(char *would_like_to_cd_into){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strcmp(path, dir[i].DIR_Name)){
+		if(!strcmp(path, dir[i].DIR_Name) && dir[i].DIR_Attr != ATTR_HIDDEN /* not hidden */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
-			printf("Attributes %d\n", dir[i].DIR_Attr);//TODO: print in string
-			//TODO: calculate the cluster number
-			//printf("Next cluster number is %d\n", )
+			switch (dir[i].DIR_Attr)
+			{
+			case ATTR_READ_ONLY:
+				printf("Attributes ATTR_READ_ONLY\n");
+				break;
+			case ATTR_HIDDEN:
+				printf("Attributes ATTR_HIDDEN\n");
+				printf("If you see this, there is an error in filestat not hiding hidden files\n");
+				break;
+			case ATTR_SYSTEM:
+				printf("Attributes ATTR_SYSTEM\n");
+				break;
+			case ATTR_VOLUME_ID:
+				printf("Attributes ATTR_VOLUME_ID\n");
+				break;
+			case ATTR_DIRECTORY:
+				printf("Attributes ATTR_DIRECTORY\n");
+				break;
+			case ATTR_ARCHIVE:
+				printf("Attributes ATTR_ARCHIVE\n");
+				break;
+			default:
+				printf("unknown attributes\n");
+				break;
+			}
+
+			//TODO: verify this is what we shoud print
+			printf("First cluster number is %d%d\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
 			return;
 		}
 	}
