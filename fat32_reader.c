@@ -28,12 +28,16 @@
 //image file being made global, represented by the descriptor supplied when first access in init
 FILE *fd;
 
-	/* Register Functions and Global Variables */
-	char *
-	convertToLocalEndain(char *original);
-char* convertToFAT32Endian(char* original);
+/* Register Functions and Global Variables */
+uint32_t convertToLocalEndain(uint32_t original);
+uint32_t convertToFAT32Endian(uint32_t original);
 void init(char* argv);
 void print_convert_to_Hex(int n);
+	/*strDummy variable for the compiler */
+	char* strDummy = "";
+	int intDummy = 0;
+	size_t sizeTDummy = 5;
+	/*End of strDummy stuff */
 
 	/***********************************************************
  * HELPER FUNCTIONS
@@ -85,7 +89,7 @@ struct directory dir[MAX_DIR];
         localEndian = B_ENDIAN;
 }
 
-char* convertToLocalEndian(char* original){
+uint32_t convertToLocalEndian(uint32_t original){
 	if(localEndian == L_ENDIAN){
 		//there is nothing to do
 		return original;
@@ -95,7 +99,7 @@ char* convertToLocalEndian(char* original){
 		return htonl((uint32_t) original);
 	}
 }
-char* convertToFAT32Endian(char* original){
+uint32_t convertToFAT32Endian(uint32_t original){
 	if(localEndian == L_ENDIAN){
 		//there is nothing to do
 		return original;
@@ -121,18 +125,18 @@ void init(char* argv){
 	/* Parse boot sector and get information, move to here*/
 	fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
 	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
-	fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
-	fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
-	fread(&BPB_RsvdSecCnt, 2, 1, fd);// number of reserved sectors, aka number of sectors before "data" sectors
-	fread(&BPB_NumFATS, 1, 1, fd); //"next line"
+	sizeTDummy = fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
+	sizeTDummy = fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
+	sizeTDummy = fread(&BPB_RsvdSecCnt, 2, 1, fd);// number of reserved sectors, aka number of sectors before "data" sectors
+	sizeTDummy = fread(&BPB_NumFATS, 1, 1, fd); //"next line"
 
 	//BPB_FATSz32 offset is 0x2C from the SEEK_SET, Kelly's slides/hints for project
 	fseek(fd, 0x24, SEEK_SET);
-	fread(&BPB_FATSz32, 4, 1, fd);
+	sizeTDummy = fread(&BPB_FATSz32, 4, 1, fd);
 
 	/*Get root directory address */
 	fseek(fd, 0x2C, SEEK_SET);
-	fread(&BPB_RootCluster, 4, 1, fd);
+	sizeTDummy = fread(&BPB_RootCluster, 4, 1, fd);
 	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
 
 	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
@@ -140,7 +144,7 @@ void init(char* argv){
 	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	fseek(fd, first_sector_of_cluster, SEEK_SET);//at the first sector of data
 	//reference the first dir, dir[0] for the root directory
-	fread(&dir[0], 32, 16, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+	sizeTDummy = fread(&dir[0], 32, 16, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
@@ -228,7 +232,7 @@ void ls(char* path){
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
 	for(int i = 0; i < 10; i++){
-		fread(&dir[i], 32, 1, fd);//one item, 32 bits
+		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, 32 bits
 		/* for reference on the dir_attr meanings, 
 		see piazza and notes for which we should include in our display of ls, I put a -> next to them for reference later
 			->ATTR_READ_ONLY   	0x01
@@ -264,7 +268,7 @@ void change_directory(char *would_like_to_cd_into){
 				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
 				present_dir = dir[i].DIR_FstClusLo;
 				fseek(fd, change_to_cluster, SEEK_SET);
-				fread(&dir[0], 32, 16, fd);
+				sizeTDummy = fread(&dir[0], 32, 16, fd);
 				return; //stop here
 			}
 		}
@@ -294,7 +298,7 @@ void change_directory(char *would_like_to_cd_into){
 
 	present_dir = change_to_cluster;
 	fseek(fd, change_to_cluster, SEEK_SET);
-	fread(&dir[0], 32, 16, fd);//this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
+	sizeTDummy = fread(&dir[0], 32, 16, fd);//this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
 }
 
 	/*
@@ -332,10 +336,7 @@ int main(int argc, char *argv[])
 {
 	char cmd_line[MAX_CMD];
 
-	/*Dummy variable for the compiler */
-	char* dummy = "";
-	printf("%s", dummy);
-	/*End of dummy stuff */
+
 
 	init(*argv); /*for Ari to work on */
 
@@ -345,7 +346,7 @@ int main(int argc, char *argv[])
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
 		printf("/]");
-		dummy = fgets(cmd_line,MAX_CMD,stdin);
+		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
 		if(strncmp(cmd_line,"info",4)==0) {
