@@ -69,11 +69,14 @@ int present_dir;//not always going to be first dir, meaning once we call 'cd' th
  * This is technically also a file
  * */
 	struct directory{
-	char DIR_Name[11];
-	uint8_t DIR_Attr; //one byte
-	uint16_t DIR_FstClusHi;
-	uint16_t DIR_FstClusLo;
-	uint32_t DIR_FileSize;
+	char DIR_Name[11];//11 bytes
+	uint8_t DIR_Attr; //1 byte
+	char padding[8];//8 bytes of padding
+	uint16_t DIR_FstClusHi;//2 bytes
+	char more_padding[4];//4 bytes padding
+	uint16_t DIR_FstClusLo;//2 bytes
+	uint32_t DIR_FileSize;//4 bytes
+	//in total, 32 bytes
 };
 
 struct directory dir[MAX_DIR];
@@ -129,9 +132,15 @@ void init(char* argv){
 
 	/* Parse args and open our image file */
 	fd = fopen(argv, "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+	printf("%s Opened\n", argv);
+	//fd is our pointer to the file, as a reminder
+	if(fd == NULL){
+		printf("File not exist\n");
+		return;
+	}
 
 	/* Parse boot sector and get information, move to here*/
-	fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
+	fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 11 as per Wiki
 	//Super helpful, https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system
 	sizeTDummy = fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
 	sizeTDummy = fread(&BPB_SecPerClus, 1, 1, fd);  //starts at 0xD
@@ -178,19 +187,19 @@ void info(){
 	//Now print out all the info
 	char buff[20];
 	sprintf(buff, "%04x", BPB_BytesPerSec);
-	printf("BPB_BytesPerSec is: %s %d\n", buff, BPB_BytesPerSec);
+	printf("BPB_BytesPerSec is: 0x%s %d \n", buff, BPB_BytesPerSec);
 
 	sprintf(buff, "%04x", BPB_SecPerClus);
-	printf("BPB_SecPerClus: %s %d\n", buff, BPB_SecPerClus);
+	printf("BPB_SecPerClus: 0x%s %d\n", buff, BPB_SecPerClus);
 
 	sprintf(buff, "%04x", BPB_RsvdSecCnt);
-	printf("BPB_RsvdSecCnt: %s %d\n", buff, BPB_RsvdSecCnt);
+	printf("BPB_RsvdSecCnt: 0x%s %d\n", buff, BPB_RsvdSecCnt);
 
 	sprintf(buff, "%04x", BPB_NumFATS);
-	printf("BPB_NumFATS: %s %d\n", buff, BPB_NumFATS);
+	printf("BPB_NumFATS: 0x%s %d\n", buff, BPB_NumFATS);
 
 	sprintf(buff, "%04x", BPB_FATSz32);
-	printf("BPB_FATSz32: %s %d\n", buff, BPB_FATSz32);
+	printf("BPB_FATSz32: 0x%s %d\n", buff, BPB_FATSz32);
 }
 
 // function to convert decimal to hexadecimal
@@ -370,7 +379,7 @@ int main(int argc, char *argv[])
 	char cmd_line[MAX_CMD];
 
 
-
+	//printf("This is the file: %s", argv[1]);
 	init(argv[1]); /*for Ari to work on */
 
 	/* Main loop.  You probably want to create a helper function
