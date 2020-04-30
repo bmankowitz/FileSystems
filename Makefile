@@ -6,8 +6,9 @@ DEPS=$(SOURCES:.c=.d)
 
 BINS=$(SOURCES:.c=)
 
-
-CFLAGS+= -g -Wall -O1 -Wpedantic -pthread
+#I temporarily "fixed" the fread errors by disabling optimization, but the
+#best thing to do is find out what is causing the errors in the first place
+CFLAGS+= -g -Wall -O0 -Wpedantic -Werror -pthread
 
 
 

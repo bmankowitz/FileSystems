@@ -128,7 +128,7 @@ void init(char* argv){
 	determineLocalEndian();
 
 	/* Parse args and open our image file */
-	fd = fopen(&argv[1], "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+	fd = fopen(argv, "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 
 	/* Parse boot sector and get information, move to here*/
 	fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 0xB as per Wiki
@@ -350,7 +350,7 @@ void filestat(char *path){
 				break;
 			}
 
-			//TODO: verify this is what we shoud print
+			//TODO: verify this is what we should print
 			printf("First cluster number is %d%d\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
 			return;
 		}
@@ -371,7 +371,7 @@ int main(int argc, char *argv[])
 
 
 
-	init(*argv); /*for Ari to work on */
+	init(argv[1]); /*for Ari to work on */
 
 	/* Main loop.  You probably want to create a helper function
        for each command besides quit. */
