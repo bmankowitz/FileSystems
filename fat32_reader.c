@@ -240,8 +240,9 @@ void info(){
 void ls(char* path){
 	int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
-	int change = (present_dir - 2 * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
+	int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
 
+	//printf("Inside ls");//used for debugging purposes
 	//skip to "change" in the file but don't read yet
 	fseek(fd, change, SEEK_SET);
 
@@ -249,17 +250,9 @@ void ls(char* path){
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
 	for(int i = 0; i < 10; i++){
-		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, 32 bits
-		/* for reference on the dir_attr meanings, 
-		see piazza and notes for which we should include in our display of ls, I put a -> next to them for reference later
-			->ATTR_READ_ONLY   	0x01
-			ATTR_HIDDEN 		0x02
-			ATTR_SYSTEM 		0x04
-			ATTR_VOLUME_ID		0x08
-			->ATTR_DIRECTORY	0x10
-			->ATTR_ARCHIVE  	0x20
-		*/
-		if((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == 0x1 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20)){
+		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
+		//See the chart in the beginning of the source code for clarification on what gets printed
+		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
 			//copy the characters into a new char to display it without tampering the img file WHATSOEVER 
 			char *something_to_be_listed = malloc(11);
 			memset(something_to_be_listed, '\0', 11);//make empty string
@@ -268,6 +261,7 @@ void ls(char* path){
 			printf("%s\t", something_to_be_listed);//this seperates the directories by follow up tab
 		}
 	}
+	printf("\n");//put the "/]"" on the next line once all the dirs are listed
 }
 
 void change_directory(char *would_like_to_cd_into){
