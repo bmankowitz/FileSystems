@@ -202,34 +202,6 @@ void info(){
 	printf("BPB_FATSz32: 0x%s %d\n", buff, BPB_FATSz32);
 }
 
-// function to convert decimal to hexadecimal
-/*char* print_convert_to_Hex(int n) {
-	char hexaDeciNum[100];
-
-	int i = 0;
-	while (n != 0) {
-		int temp = 0;
-		temp = n % 16;//get remainder
-		if (temp < 10){
-			hexaDeciNum[i] = temp + 48;
-			i++;
-		}
-		else{
-			hexaDeciNum[i] = temp + 55;
-			i++;
-		}
-		n = n / 16;
-	}
-	char *result;
-	result = malloc(10);
-	// for litte-endian hex
-	for (int j = i - 1; j >= 0; j--){
-		result[j] = hexaDeciNum[j];//print out the hex, skip line
-	}
-	return &result;
-	
-}*/
-
 /*
  * ls
  * ----------------------------
@@ -250,7 +222,7 @@ void ls(char* path){
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
 	printf(".\t..\t");
-	for(int i = 0; i < 10; i++){
+	for(int i = 0; i < 16; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
 		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
