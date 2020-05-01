@@ -249,16 +249,12 @@ void ls(char* path){
 	//TODO: go thru each directory steming from start_dir
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
+	printf(".\t..\t");
 	for(int i = 0; i < 10; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
 		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
-			//copy the characters into a new char to display it without tampering the img file WHATSOEVER 
-			char *something_to_be_listed = malloc(11);
-			memset(something_to_be_listed, '\0', 11);//make empty string
-			//copy from DIR_Name...I think this is short...confirmation needed
-			memcpy(something_to_be_listed, dir[i].DIR_Name, 11);//this is taka the copying
-			printf("%s\t", something_to_be_listed);//this seperates the directories by follow up tab
+			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
 		}
 	}
 	printf("\n");//put the "/]"" on the next line once all the dirs are listed
@@ -381,7 +377,7 @@ int main(int argc, char *argv[])
 
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
-		printf("/]");
+		printf("/] ");//better readability when typing commands
 		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
