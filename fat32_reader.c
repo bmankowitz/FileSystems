@@ -355,10 +355,8 @@ int main(int argc, char *argv[])
 		else if(strncmp(cmd_line, "stat",4)==0){
 			//TODO: remove trailing '\n' and decide on common FS.Attr_name format ex: "FSINFO   TXT " vs "FSINFO.TXT"
 			printf("Going to stat!\n");
+			char* buf = strncpy(buf, &cmd_line[5], sizeof(cmd_line[5])-1);/*remove the '\n' */
 			filestat(&cmd_line[5]);
-			//TODO: remove this
-			printf("%x",convertToFAT32Endian(0x1415));
-			printf("%x",convertToLocalEndian(0x1415));
 		}
 
 		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
