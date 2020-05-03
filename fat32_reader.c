@@ -292,37 +292,31 @@ void change_directory(char *would_like_to_cd_into){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strcmp(path, dir[i].DIR_Name) && dir[i].DIR_Attr != ATTR_HIDDEN /* not hidden */){
+		if(!strcmp(path, dir[i].DIR_Name) /* TODO: show hidden files? */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
-			switch (dir[i].DIR_Attr)
-			{
-			case ATTR_READ_ONLY:
+
+			if(!!(ATTR_READ_ONLY & dir[i].DIR_Attr))
 				printf("Attributes ATTR_READ_ONLY\n");
-				break;
-			case ATTR_HIDDEN:
+
+			if(!!(ATTR_HIDDEN & dir[i].DIR_Attr)){
 				printf("Attributes ATTR_HIDDEN\n");
 				printf("If you see this, there is an error in filestat not hiding hidden files\n");
-				break;
-			case ATTR_SYSTEM:
-				printf("Attributes ATTR_SYSTEM\n");
-				break;
-			case ATTR_VOLUME_ID:
-				printf("Attributes ATTR_VOLUME_ID\n");
-				break;
-			case ATTR_DIRECTORY:
-				printf("Attributes ATTR_DIRECTORY\n");
-				break;
-			case ATTR_ARCHIVE:
-				printf("Attributes ATTR_ARCHIVE\n");
-				break;
-			default:
-				printf("unknown attributes\n");
-				break;
 			}
-
+			if(!!(ATTR_SYSTEM & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_SYSTEM\n");
+			}
+			if(!!(ATTR_VOLUME_ID & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_VOLUME_ID\n");
+			}
+			if(!!(ATTR_DIRECTORY & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_DIRECTORY\n");
+			}
+			if(!!(ATTR_ARCHIVE & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_ARCHIVE\n");
+			}
 			//TODO: verify this is what we should print
-			printf("First cluster number is %d%d\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
+			printf("First cluster number is %x%x\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
 			return;
 		}
 	}
@@ -360,7 +354,17 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line, "stat",4)==0){
 			printf("Going to stat!\n");
-			filestat(&cmd_line[5]);//TODO
+			filestat(&cmd_line[5]);
+			//TODO: remove this
+			printf("%x",convertToFAT32Endian(0x1415));
+			printf("%x",convertToLocalEndian(0x1415));
+		}
+
+		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
+			//TODO: remove this
+			printf("%x",convertToFAT32Endian(0x1415));
+			printf("%x",convertToLocalEndian(0x1415));
+			printf("\n the result is %d", 0x10 & 0x11);
 		}
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
