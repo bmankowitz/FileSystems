@@ -326,6 +326,27 @@ void filestat(char *path){
 }
 
 
+/*
+* size
+* ----------------------------
+*	Description: prints the size of file FILE_NAME in the present working directory.
+*	Log an error if FILE_NAME does not exist.
+*
+*	path: the path to examine. Determine if this is a file or directory and print accordingly
+*/
+void size(char* path){
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strcmp(path, dir[i].DIR_Name) /* TODO: show hidden files? */){
+			if(dir[i].DIR_Attr & ATTR_DIRECTORY){
+				printf("This is a folder");
+				return;
+			}
+			printf("Size is %d", dir[i].DIR_FileSize);
+			return;
+		}
+	}
+	return;
+}
 /***********************************************************
  * MAIN
  * Program main
@@ -381,6 +402,7 @@ int main(int argc, char *argv[])
 		
 		else if(strncmp(cmd_line,"size",4)==0) {
 			printf("Going to size!\n");
+			size(char* path);
 		}
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
