@@ -353,9 +353,9 @@ int main(int argc, char *argv[])
 		}
 
 		else if(strncmp(cmd_line, "stat",4)==0){
-			//TODO: remove trailing '\n' and decide on common FS.Attr_name format ex: "FSINFO   TXT " vs "FSINFO.TXT"
+			//TODO: decide on common FS.Attr_name format ex: "FSINFO   TXT " vs "FSINFO.TXT"
 			printf("Going to stat!\n");
-			char* buf = strncpy(buf, &cmd_line[5], sizeof(cmd_line[5])-1);/*remove the '\n' */
+			cmd_line[strlen(&cmd_line[0])-1] = '\0';//remove trailing newline
 			filestat(&cmd_line[5]);
 		}
 
