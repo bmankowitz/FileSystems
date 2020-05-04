@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
@@ -165,6 +166,60 @@ void init(char* argv){
 	//printf("Root addr is 0x%x\n", root_addr);
 	return;
 }
+
+/*
+ * freeAll
+ * ----------------------------
+ *   free all allocated memory
+ */ 	 
+
+	void freeAlll() {
+		//TODO
+	}
+
+/*
+ * convertToShortName
+ * ----------------------------
+ *   Converts the given string into the appropriate short name
+ * 	 Both of the converting functions take a 32-bit word and convert 
+ */
+
+	char* convertToShortName(char* input) {
+		printf("\nInside of convertToShortName");
+		char* firstPart = malloc(sizeof(char) * 9);//+1 for the null terminator
+		char* extension = malloc(sizeof(char) * 4);
+		int i = 0;//position in input
+		int j = 0;//position in outpur
+		while(i < 8){
+			if(input[i] == '\0' || input[i] == '.'){
+				//the end of the string is reached before 8 characters
+				while(j<i){
+					firstPart[j++] = ' ';
+				}
+				break;
+			}
+			else{
+				firstPart[i++] = input[j++];
+			}
+
+		}
+		firstPart[8] = '\0';//make sure to null terminate string
+		j = 0; //reset the counter;
+		while(i < 11){
+			if(isalnum(input[i])){//the character is alphanumeric
+				extension[j++] = input[i++];
+			}
+		}
+		extension[3] = '\0';//null terminated
+		strcat(firstPart, extension);
+				
+		printf("\nexiting convertToShortName");
+
+		return firstPart;
+		
+
+
+	}
 
 /***********************************************************
  * CMD FUNCTIONS
@@ -345,8 +400,48 @@ void size(char* path){
 			return;
 		}
 	}
+	//if we got here, there were no matches
+	printf("Error: file not found");
 	return;
 }
+
+/*
+* read
+* ----------------------------
+*	Description: reads from a file named FILE_NAME, starting at POSITION, and prints NUM_BYTES.
+*	Return an error when trying to read an unopened file. ?! TODO: what is an opened file
+*
+*	path: the path to examine. Determine if this is a file or directory and if it exists
+*/
+//TODO: can we just use the system read call? 
+void fileread(char* path){
+	for(int i = 0; i < MAX_DIR; i++){
+		if(strcmp(dir[i].DIR_Name, path)){
+			//check if directory
+			if(!!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
+				printf("ERROR: attempt to read directory");
+				return;
+			}
+
+			//we have a match!
+
+			//find the position of the file to read:
+			uint32_t position;
+			char high[4];
+			char low[4];
+			sprintf(high,"%d", dir[i].DIR_FstClusHi);
+			sprintf(low,"%d", dir[i].DIR_FstClusLo);
+			//concatonates low + high
+			strcat(low, high); //TODO: is this the right order? lo,hi or hi,low
+			position = atoi(low);
+			printf("found starting position %x at file %s",position, dir[i].DIR_Name);
+			//fseek(fd, 0xB, SEEK_SET); //SEEK_SET is the beginning of File, skip to position 11 as per Wiki
+			//sizeTDummy = fread(&BPB_BytesPerSec, 2, 1, fd); //one element that is 2 bytes, 2 Hex's on the HexEdit tool
+			return;
+		}
+	}
+}
+
 /***********************************************************
  * MAIN
  * Program main
@@ -364,7 +459,8 @@ int main(int argc, char *argv[])
 
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
-		printf("/] ");//better readability when typing commands
+		//printf("\n/%s] ", dir[1].DIR_Name);//better readability when typing commands
+		printf("\n/] ");//better readability when typing commands
 		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
@@ -374,7 +470,6 @@ int main(int argc, char *argv[])
 		}
 
 		else if(strncmp(cmd_line, "stat",4)==0){
-			//TODO: decide on common FS.Attr_name format ex: "FSINFO   TXT " vs "FSINFO.TXT"
 			printf("Going to stat!\n");
 			cmd_line[strlen(&cmd_line[0])-1] = '\0';//remove trailing newline
 			filestat(&cmd_line[5]);
@@ -385,6 +480,7 @@ int main(int argc, char *argv[])
 			printf("%x",convertToFAT32Endian(0x1415));
 			printf("%x",convertToLocalEndian(0x1415));
 			printf("\n the result is %d", 0x10 & 0x11);
+			printf("The converted string is: %s", convertToShortName(&cmd_line[5]));
 		}
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
@@ -395,6 +491,11 @@ int main(int argc, char *argv[])
 		else if(strncmp(cmd_line,"open",4)==0) {
 			printf("Going to open!\n");
 		}
+		
+		else if(strncmp(cmd_line,"read",4)==0) {
+			printf("Going to read!\n");
+			fileread(&cmd_line[5]);
+		}
 
 		else if(strncmp(cmd_line,"close",5)==0) {
 			printf("Going to close!\n");
@@ -402,16 +503,12 @@ int main(int argc, char *argv[])
 		
 		else if(strncmp(cmd_line,"size",4)==0) {
 			printf("Going to size!\n");
-			size(char* path);
+			size(&cmd_line[5]);
 		}
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
 			change_directory(&cmd_line[3]);
-		}
-
-		else if(strncmp(cmd_line,"read",4)==0) {
-			printf("Going to read!\n");
 		}
 		
 		else if(strncmp(cmd_line,"quit",4)==0) {
