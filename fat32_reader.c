@@ -50,7 +50,7 @@ void print_convert_to_Hex(int n);
 
 	/***********************************************************
  * HELPER FUNCTIONS
- * Use these for all IO operations TODO: and others?
+ * Use these for all IO operations
  **********************************************************/
 int localEndian = -1;
 
@@ -90,8 +90,7 @@ struct directory dir[MAX_DIR];
  * 	 Both of the converting functions take a 32-bit word and convert 
  */
 
-	void
-	determineLocalEndian() {
+void determineLocalEndian() {
 	int i = 1;
     char *p = (char *)&i;
 
@@ -181,34 +180,40 @@ void init(char* argv){
  * convertToShortName
  * ----------------------------
  *   Converts the given string into the appropriate short name
- * 	 Both of the converting functions take a 32-bit word and convert 
+ * 	 BUG: This is not (yet) equipped to handle filenames
+ * 	 that need to be truncated. EX:  reallylongname.txt -> REALLY~0.txt
  */
 
 	char* convertToShortName(char* input) {
-		printf("\nInside of convertToShortName");
+		//printf("\nInside of convertToShortName");
 		char* firstPart = malloc(sizeof(char) * 9);//+1 for the null terminator
 		char* extension = malloc(sizeof(char) * 4);
 		int i = 0;//position in input
 		int j = 0;//position in outpur
 		while(i < 8){
-			if(input[i] == '\0' || input[i] == '.'){
+			if(iscntrl(input[i]) || input[i] == '.'){
 				//the end of the string is reached before 8 characters
-				while(j<i){
+				while(j<8){
 					firstPart[j++] = ' ';
 				}
 				break;
 			}
 			else{
-				firstPart[i++] = input[j++];
+				firstPart[i++] = toupper(input[j++]);
 			}
 
 		}
 		firstPart[8] = '\0';//make sure to null terminate string
 		j = 0; //reset the counter;
-		while(i < 11){
-			if(isalnum(input[i])){//the character is alphanumeric
-				extension[j++] = input[i++];
+		while(j < 3){
+			i++;//i++ here to skip the '.' if it exists
+			if(isalnum((unsigned char)input[i])){//the character is alphanumeric
+				extension[j++] = toupper(input[i]);
 			}
+			else{
+				extension[j++] = ' ';
+			}
+
 		}
 		extension[3] = '\0';//null terminated
 		strcat(firstPart, extension);
@@ -280,6 +285,7 @@ void ls(char* path){
 	for(int i = 0; i < 16; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
+		//TODO: the ATTR attributes are a mask, not a value
 		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
 			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
 		}
@@ -347,7 +353,7 @@ void change_directory(char *would_like_to_cd_into){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strcmp(path, dir[i].DIR_Name) /* TODO: show hidden files? */){
+		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: using strncmp bc DIR_Name has a trailing space */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
 
@@ -391,7 +397,7 @@ void filestat(char *path){
 */
 void size(char* path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strcmp(path, dir[i].DIR_Name) /* TODO: show hidden files? */){
+		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: show hidden files? */){
 			if(dir[i].DIR_Attr & ATTR_DIRECTORY){
 				printf("This is a folder");
 				return;
@@ -471,8 +477,8 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line, "stat",4)==0){
 			printf("Going to stat!\n");
-			cmd_line[strlen(&cmd_line[0])-1] = '\0';//remove trailing newline
-			filestat(&cmd_line[5]);
+			//cmd_line[strlen(&cmd_line[0])-1] = '\0';//remove trailing newline
+			filestat(convertToShortName(&cmd_line[5]));
 		}
 
 		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
@@ -503,7 +509,7 @@ int main(int argc, char *argv[])
 		
 		else if(strncmp(cmd_line,"size",4)==0) {
 			printf("Going to size!\n");
-			size(&cmd_line[5]);
+			size(convertToShortName(&cmd_line[5]));
 		}
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
