@@ -320,6 +320,61 @@ void ls(char* path){
 	printf("\n");//put the "/]"" on the next line once all the dirs are listed
 }
 
+/**
+ * cd command 
+*/
+void change_directory(char *would_like_to_cd_into)
+{
+	int cluster_hit = -1; //this indicates the dir is not found
+	int change_to_cluster;
+	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
+	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
+	if (strcmp(would_like_to_cd_into, "..") == 0)
+	{
+		for (int i = 0; i < 10; i++)
+		{
+			int comp = strncmp(dir[i].DIR_Name, "..", 2);
+			if (!comp)
+			{
+				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
+				present_dir = dir[i].DIR_FstClusLo;
+				fseek(fd, change_to_cluster, SEEK_SET);
+				sizeTDummy = fread(&dir[0], 32, 16, fd);
+				return; //stop here
+			}
+		}
+	}
+	//when we aren't "moving up" do the following
+	//first examine if the dir we want to cd into exists
+	for (int i = 0; i < 10; i++)
+	{
+		char *directory = malloc(11);
+		memset(directory, '\0', 11);
+		memcpy(directory, dir[i].DIR_Name, 11);
+		//compare variable 'directory' with what we'd like to cd into, namely the parameter provided in the method
+		int bool = strncmp(directory, would_like_to_cd_into, 11);
+		if (!bool)
+		{
+			cluster_hit = dir[i].DIR_FstClusLo; //see page 25 for more info
+			break;
+		}
+	}
+	if (cluster_hit == -1)
+	{
+		printf("Directory not found");
+		return;
+	}
+	//to what are we changing to? first see if its a name (ie not '..')
+	//refer to the ls command for similar structure from here
+	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
+	change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
+
+	present_dir = change_to_cluster;
+	fseek(fd, change_to_cluster, SEEK_SET);
+	sizeTDummy = fread(&dir[0], 32, 16, fd); //this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
+}
+
 	/*
 * filestat
 * ----------------------------
