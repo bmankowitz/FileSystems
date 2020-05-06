@@ -321,17 +321,51 @@ void ls(char* path){
 }
 
 /**
+ * This method is used to clean up the dirname when passed to cd
+ * In short, it is used to separate the dot (if it exists) in the extension
+ * Then it comebines the two possible halfs
+ * Regardless, it makes everything one case so the cd method can take uppercase, lowercase, or a mix
+ */
+char * clean_up_dir_name(char* dirname){
+	int i;//avoid comp warning
+	char *result;//store the string here
+	char long_name[12];
+	memset(long_name, ' ', 12);//empty string to place the dir into later
+	char *has_dot = strtok(dirname, "."); //resource for the strtok method, deubugging: https://www.tutorialspoint.com/c_standard_library/c_function_strtok.htm
+	//if the dirname has a period, ie when we get the tokens the return is !NULL
+	if (has_dot){
+		strncpy(long_name, has_dot, strlen(has_dot));//transfer the file up until the dot
+		has_dot = strtok(NULL, ".");//continue tokenizing the string used before, see https://stackoverflow.com/questions/23456374/why-do-we-use-null-in-strtok
+		if (has_dot){
+			//insert the extension in the longer dir name
+			strncpy((char *) long_name + 8, has_dot, strlen(has_dot));//doesn't compile because of this line, find another way to go to position 8 in the char*
+		}
+		long_name[11] = '\0';//end of string marker
+		for (i = 0; i < 11; i++){
+			long_name[i] = toupper(long_name[i]);//make everything uppercase SINCE EVERYTHING IN THE FAT32 IS UPPERCASE...not yelling here
+		}
+	} else{
+		//here code runs if we want to cd into a dir without an extension like DIR in our example
+		strncpy(long_name, dirname, strlen(dirname));
+		long_name[11] = '\0';//end of string marker
+	}
+	result = long_name;
+	return result;
+}
+
+	/**
  * cd command 
 */
-void change_directory(char *would_like_to_cd_into)
-{
+	void
+	change_directory(char *would_like_to_cd_into){
+	would_like_to_cd_into = clean_up_dir_name(would_like_to_cd_into);
 	int cluster_hit = -1; //this indicates the dir is not found
 	int change_to_cluster;
 	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
 	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
 	if (strcmp(would_like_to_cd_into, "..") == 0)
 	{
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < 16; i++)
 		{
 			int comp = strncmp(dir[i].DIR_Name, "..", 2);
 			if (!comp)
@@ -346,21 +380,17 @@ void change_directory(char *would_like_to_cd_into)
 	}
 	//when we aren't "moving up" do the following
 	//first examine if the dir we want to cd into exists
-	for (int i = 0; i < 10; i++)
-	{
+	for (int i = 0; i < 16; i++){
 		char *directory = malloc(11);
 		memset(directory, '\0', 11);
 		memcpy(directory, dir[i].DIR_Name, 11);
 		//compare variable 'directory' with what we'd like to cd into, namely the parameter provided in the method
-		int bool = strncmp(directory, would_like_to_cd_into, 11);
-		if (!bool)
-		{
+		if (strncmp(directory, would_like_to_cd_into, 11) == 0){
 			cluster_hit = dir[i].DIR_FstClusLo; //see page 25 for more info
 			break;
 		}
 	}
-	if (cluster_hit == -1)
-	{
+	if (cluster_hit == -1){
 		printf("Directory not found");
 		return;
 	}
@@ -368,9 +398,12 @@ void change_directory(char *would_like_to_cd_into)
 	//refer to the ls command for similar structure from here
 	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
-	change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
+	change_to_cluster = ((cluster_hit - 2) * BPB_BytesPerSec) + reserved_byte_count + bytes_in_fat;
 
-	present_dir = change_to_cluster;
+	//use this for debugging
+	//printf("This is the cluster to change into: %d", change_to_cluster);
+
+	present_dir = cluster_hit;
 	fseek(fd, change_to_cluster, SEEK_SET);
 	sizeTDummy = fread(&dir[0], 32, 16, fd); //this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
 }
@@ -566,8 +599,8 @@ int main(int argc, char *argv[])
 		}
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
-			printf("Going to cd!\n");
-			//change_directory(&cmd_line[3]);
+			printf("Going to cd into %s\n", &cmd_line[3]);//fix this line
+			change_directory(&cmd_line[3]);
 		}
 		else if(strncmp(cmd_line,"mkdir",4)==0) {
 			printf("Going to mkdir!\n");
