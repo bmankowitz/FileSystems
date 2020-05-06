@@ -175,16 +175,14 @@ void init(char* argv){
  * info
  * ----------------------------
  *   Description: prints out information about the following fields in both hex and base 10: 
- *		BPB_BytesPerSec == https://en.wikipedia.org/wiki/Design_of_the_FAT_file_system#BPB
- *		BPB_SecPerClus, sector/cluster == see the above wiki in the same table
- *	 	BPB_RsvdSecCnt, # of reserved sector,
- *	 	BPB_NumFATS, "Number of File Allocation Tables"
+ *		BPB_BytesPerSec, Bytes per Sector
+ *		BPB_SecPerClus, amount of sectors in a cluster
+ *	 	BPB_RsvdSecCnt, # of reserved sector
+ *	 	BPB_NumFATS, Number of File Allocation Tables
  *	 	BPB_FATSz32, Sectors per Fat
-
- *		USING THE HEXEDIT TOOL ON THE WEBSITE https://hexed.it/ AND PASTING THE fat32.img FILE
  */
 void info(){
-	//Now print out all the info
+	//Now print out all the info that was recorded in the init() method when we started the program
 	char buff[20];
 	sprintf(buff, "%04x", BPB_BytesPerSec);
 	printf("BPB_BytesPerSec is: 0x%s %d \n", buff, BPB_BytesPerSec);
@@ -206,10 +204,10 @@ void info(){
  * ls
  * ----------------------------
  *	Description: lists the contents of DIR_NAME, including “.” and “..”.
- *	
  *	path: the path to examine  
  */
 void ls(char* path){
+	//calculate the place in file, called change
 	int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
 	int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
@@ -225,59 +223,12 @@ void ls(char* path){
 	for(int i = 0; i < 16; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
+		//if the directory/File exist then print out the dir name
 		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
 			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
 		}
 	}
 	printf("\n");//put the "/]"" on the next line once all the dirs are listed
-}
-
-void change_directory(char *would_like_to_cd_into){
-	int cluster_hit = -1;//this indicates the dir is not found
-	int change_to_cluster;
-	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
-	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
-	if (strcmp(would_like_to_cd_into, "..") == 0)
-	{
-		for (int i = 0; i < 10; i++)
-		{
-			int comp = strncmp(dir[i].DIR_Name, "..", 2);
-			if (!comp)
-			{
-				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
-				present_dir = dir[i].DIR_FstClusLo;
-				fseek(fd, change_to_cluster, SEEK_SET);
-				sizeTDummy = fread(&dir[0], 32, 16, fd);
-				return; //stop here
-			}
-		}
-	}
-	//when we aren't "moving up" do the following
-	//first examine if the dir we want to cd into exists
-	for (int i = 0; i < 10; i++){
-		char *directory = malloc(11);
-		memset(directory, '\0', 11);
-		memcpy(directory, dir[i].DIR_Name, 11);
-		//compare variable 'directory' with what we'd like to cd into, namely the parameter provided in the method
-		int bool = strncmp(directory, would_like_to_cd_into, 11);
-		if(!bool){
-			cluster_hit = dir[i].DIR_FstClusLo;//see page 25 for more info
-			break;
-		}
-	}
-	if (cluster_hit == -1){
-		printf("Directory not found");
-		return;
-	}
-	//to what are we changing to? first see if its a name (ie not '..')
-	//refer to the ls command for similar structure from here
-	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
-	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
-	change_to_cluster = (cluster_hit - 2) * BPB_BytesPerSec + reserved_byte_count + bytes_in_fat;
-
-	present_dir = change_to_cluster;
-	fseek(fd, change_to_cluster, SEEK_SET);
-	sizeTDummy = fread(&dir[0], 32, 16, fd);//this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
 }
 
 	/*
@@ -382,7 +333,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
-			change_directory(&cmd_line[3]);
+			//change_directory(&cmd_line[3]);
 		}
 
 		else if(strncmp(cmd_line,"read",4)==0) {
