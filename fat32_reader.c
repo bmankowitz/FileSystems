@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 /* Put any symbolic constants (defines) here */
 #define True 1  /* C has no booleans! */
@@ -49,7 +50,7 @@ void print_convert_to_Hex(int n);
 
 	/***********************************************************
  * HELPER FUNCTIONS
- * Use these for all IO operations TODO: and others?
+ * Use these for all IO operations
  **********************************************************/
 int localEndian = -1;
 
@@ -61,6 +62,8 @@ int BPB_NumFATS;
 int BPB_FATSz32;
 int BPB_RootCluster;
 int first_sector_of_cluster;
+int bytes_for_reserved;
+int fat_bytes;
 char  * dir_name;
 int present_dir;//not always going to be first dir, meaning once we call 'cd' this will be the present directory
 
@@ -77,10 +80,15 @@ int present_dir;//not always going to be first dir, meaning once we call 'cd' th
 	uint16_t DIR_FstClusLo;//2 bytes
 	uint32_t DIR_FileSize;//4 bytes
 	//in total, 32 bytes
+
+	//to ease calculations, I am attaching the following to each "dir"
+	//actually ignoring this for now. unsure if it's wise to play with this struct
+	//uint32_t firstSecOfClus = ((DIR_- 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 };
 
 struct directory dir[MAX_DIR];
 //^this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
+struct directory rootDir;//the root directory, set during init
 
 	/*
  * endian functions
@@ -89,8 +97,7 @@ struct directory dir[MAX_DIR];
  * 	 Both of the converting functions take a 32-bit word and convert 
  */
 
-	void
-	determineLocalEndian() {
+void determineLocalEndian() {
 	int i = 1;
     char *p = (char *)&i;
 
@@ -106,8 +113,17 @@ uint32_t convertToLocalEndian(uint32_t original){
 		return original;
 	}
 	else{
-		//To convert from little endian to big endian
-		return htonl((uint32_t) original);
+		//To swap endian:
+		uint32_t b0,b1,b2,b3;
+		uint32_t returnValue;
+
+		b0 = (original & 0x000000ff) << 24u;
+		b1 = (original & 0x0000ff00) << 8u;
+		b2 = (original & 0x00ff0000) >> 8u;
+		b3 = (original & 0xff000000) >> 24u;
+
+		returnValue = b0 | b1 | b2 | b3;
+		return returnValue;
 	}
 }
 uint32_t convertToFAT32Endian(uint32_t original){
@@ -117,7 +133,17 @@ uint32_t convertToFAT32Endian(uint32_t original){
 	}
 	else{
 		//convert from big endian to little endian
-		return ntohl((uint32_t) original);
+		//To swap endian:
+				uint32_t b0,b1,b2,b3;
+				uint32_t returnValue;
+
+				b0 = (original & 0x000000ff) << 24u;
+				b1 = (original & 0x0000ff00) << 8u;
+				b2 = (original & 0x00ff0000) >> 8u;
+				b3 = (original & 0xff000000) >> 24u;
+
+				returnValue = b0 | b1 | b2 | b3;
+				return returnValue;
 	}
 }
 
@@ -156,15 +182,78 @@ void init(char* argv){
 	sizeTDummy = fread(&BPB_RootCluster, 4, 1, fd);
 	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
 
-	int bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
-	int fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
+	//moved declaration to global
+	bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
 	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	fseek(fd, first_sector_of_cluster, SEEK_SET);//at the first sector of data
 	//reference the first dir, dir[0] for the root directory
 	sizeTDummy = fread(&dir[0], 32, 16, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
 	//printf("Root addr is 0x%x\n", root_addr);
+	//set rootDir:
+	rootDir = dir[0];
 	return;
 }
+
+/*
+ * freeAll
+ * ----------------------------
+ *   free all allocated memory
+ */ 	 
+
+	void freeAll() {
+		//TODO
+	}
+
+/*
+ * convertToShortName
+ * ----------------------------
+ *   Converts the given string into the appropriate short name
+ * 	 BUG: This is not (yet) equipped to handle filenames
+ * 	 that need to be truncated. EX:  reallylongname.txt -> REALLY~0.txt
+ */
+
+	char* convertToShortName(char* input) {
+		//printf("\nInside of convertToShortName");
+		char* firstPart = malloc(sizeof(char) * 9);//+1 for the null terminator
+		char* extension = malloc(sizeof(char) * 4);
+		int i = 0;//position in input
+		int j = 0;//position in outpur
+		while(i < 8){
+			if(iscntrl(input[i]) || input[i] == '.'){
+				//the end of the string is reached before 8 characters
+				while(j<8){
+					firstPart[j++] = ' ';
+				}
+				break;
+			}
+			else{
+				firstPart[i++] = toupper(input[j++]);
+			}
+
+		}
+		firstPart[8] = '\0';//make sure to null terminate string
+		j = 0; //reset the counter;
+		while(j < 3){
+			i++;//i++ here to skip the '.' if it exists
+			if(isalnum((unsigned char)input[i])){//the character is alphanumeric
+				extension[j++] = toupper(input[i]);
+			}
+			else{
+				extension[j++] = ' ';
+			}
+
+		}
+		extension[3] = '\0';//null terminated
+		strcat(firstPart, extension);
+				
+		//printf("\nexiting convertToShortName");
+
+		return firstPart;
+		
+
+
+	}
 
 /***********************************************************
  * CMD FUNCTIONS
@@ -223,7 +312,7 @@ void ls(char* path){
 	for(int i = 0; i < 16; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
-		//if the directory/File exist then print out the dir name
+		//TODO: the ATTR attributes are a mask, not a value
 		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
 			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
 		}
@@ -243,37 +332,31 @@ void ls(char* path){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strcmp(path, dir[i].DIR_Name) && dir[i].DIR_Attr != ATTR_HIDDEN /* not hidden */){
+		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: using strncmp bc DIR_Name has a trailing space */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
-			switch (dir[i].DIR_Attr)
-			{
-			case ATTR_READ_ONLY:
+
+			if(!!(ATTR_READ_ONLY & dir[i].DIR_Attr))
 				printf("Attributes ATTR_READ_ONLY\n");
-				break;
-			case ATTR_HIDDEN:
+
+			if(!!(ATTR_HIDDEN & dir[i].DIR_Attr)){
 				printf("Attributes ATTR_HIDDEN\n");
 				printf("If you see this, there is an error in filestat not hiding hidden files\n");
-				break;
-			case ATTR_SYSTEM:
-				printf("Attributes ATTR_SYSTEM\n");
-				break;
-			case ATTR_VOLUME_ID:
-				printf("Attributes ATTR_VOLUME_ID\n");
-				break;
-			case ATTR_DIRECTORY:
-				printf("Attributes ATTR_DIRECTORY\n");
-				break;
-			case ATTR_ARCHIVE:
-				printf("Attributes ATTR_ARCHIVE\n");
-				break;
-			default:
-				printf("unknown attributes\n");
-				break;
 			}
-
+			if(!!(ATTR_SYSTEM & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_SYSTEM\n");
+			}
+			if(!!(ATTR_VOLUME_ID & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_VOLUME_ID\n");
+			}
+			if(!!(ATTR_DIRECTORY & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_DIRECTORY\n");
+			}
+			if(!!(ATTR_ARCHIVE & dir[i].DIR_Attr)){
+				printf("Attributes ATTR_ARCHIVE\n");
+			}
 			//TODO: verify this is what we should print
-			printf("First cluster number is %d%d\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
+			printf("First cluster number is %x%x\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
 			return;
 		}
 	}
@@ -282,6 +365,86 @@ void filestat(char *path){
 	return;
 }
 
+
+/*
+* size
+* ----------------------------
+*	Description: prints the size of file FILE_NAME in the present working directory.
+*	Log an error if FILE_NAME does not exist.
+*
+*	path: the path to examine. Determine if this is a file or directory and print accordingly
+*	return: returns the size if file exists, otherwise 0
+*/
+int size(char* path, int shouldPrint){
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: show hidden files? */){
+			if(dir[i].DIR_Attr & ATTR_DIRECTORY){
+				if(shouldPrint) printf("This is a folder");
+				return 0;
+			}
+			if(shouldPrint) printf("Size is %d", dir[i].DIR_FileSize);
+			return dir[i].DIR_FileSize;
+		}
+	}
+	//if we got here, there were no matches
+	if(shouldPrint) printf("Error: file not found");
+	return 0;
+}
+
+/*
+* read
+* ----------------------------
+*	Description: reads from a file named FILE_NAME, starting at POSITION, and prints NUM_BYTES.
+*	Return an error when trying to read an unopened file. ?! TODO: what is an opened file
+*
+*	path: the path to examine. Determine if this is a file or directory and if it exists
+*/
+//TODO: can we just use the system read call? 
+void fileread(char* file, int startPos, int numBytes){
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strncmp(dir[i].DIR_Name, file, 11)){
+			//check if directory
+			if(!!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
+				printf("ERROR: attempt to read directory");
+				return;
+			}
+
+			//we have a match!
+			//ensure what we want to read is within the length:
+			int fsize = size(file, False);
+			if(numBytes >= fsize){
+				printf("ERROR: Attempted to read outside of file bounds");
+				return;
+			}
+
+			//find the position of the file to read:
+			uint32_t position;
+			char buf[fsize+1/*null terminator*/];
+			uint32_t high = dir[i].DIR_FstClusHi << 4;
+			uint16_t low = dir[i].DIR_FstClusLo;
+			position = low + high;
+			printf("found starting position %x at file %s",position, dir[i].DIR_Name);
+			int firstSecOfClus = ((position - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes + BPB_RootCluster;
+			fseek(fd, firstSecOfClus, SEEK_SET);
+			//TODO: this works for consecutive data, but fix for nonconsecutive data
+			sizeTDummy = fread(buf, sizeof(char), fsize, fd);
+			buf[fsize] = '\0';
+			printf("%s", buf);
+			return;
+		}
+	}
+	printf("ERROR: Unable to find file");
+}
+
+void volume(){
+	if(rootDir.DIR_Name == NULL){
+		printf("ERROR: Volume name not found");
+		return;
+	}
+	rootDir.DIR_Name[11] = '\0';
+	printf("%s",rootDir.DIR_Name);
+	return;
+}
 
 /***********************************************************
  * MAIN
@@ -300,7 +463,8 @@ int main(int argc, char *argv[])
 
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
-		printf("/] ");//better readability when typing commands
+		//printf("\n/%s] ", dir[1].DIR_Name);//better readability when typing commands
+		printf("\n/] ");//better readability when typing commands
 		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
@@ -311,33 +475,52 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line, "stat",4)==0){
 			printf("Going to stat!\n");
-			filestat(&cmd_line[5]);//TODO
+			//cmd_line[strlen(&cmd_line[0])-1] = '\0';//remove trailing newline
+			filestat(convertToShortName(&cmd_line[5]));
+		}
+
+		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
+			//TODO: remove this
+			printf("%x",convertToFAT32Endian(0x1415));
+			printf("%x",convertToLocalEndian(0x1415));
+			//printf("\n the result is %d", 0x10 & 0x11);
+			//printf("The converted string is: %s", convertToShortName(&cmd_line[5]));
 		}
 		
 		else if(strncmp(cmd_line,"ls",2)==0) {
 			printf("Going to ls.\n");
 			ls(&cmd_line[3]);
 		}
-
-		else if(strncmp(cmd_line,"open",4)==0) {
-			printf("Going to open!\n");
-		}
-
-		else if(strncmp(cmd_line,"close",5)==0) {
-			printf("Going to close!\n");
+		
+		else if(strncmp(cmd_line,"read",4)==0) {
+			printf("Going to read!\n");
+			char* file = convertToShortName(strtok(&cmd_line[5], " "));
+			int startingPosition = atoi(strtok(NULL, " "));
+			int numBytes = atoi(strtok(NULL, " "));
+			fileread(file, startingPosition, numBytes);
 		}
 		
 		else if(strncmp(cmd_line,"size",4)==0) {
 			printf("Going to size!\n");
+			size(convertToShortName(&cmd_line[5]), True);
+		}
+
+		else if(strncmp(cmd_line,"volume",4)==0) {
+			printf("Going to size!\n");
+			volume();
 		}
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd!\n");
 			//change_directory(&cmd_line[3]);
 		}
-
-		else if(strncmp(cmd_line,"read",4)==0) {
-			printf("Going to read!\n");
+		else if(strncmp(cmd_line,"mkdir",4)==0) {
+			printf("Going to mkdir!\n");
+			//TODO
+		}
+		else if(strncmp(cmd_line,"rmdir",4)==0) {
+			printf("Going to rmdir!\n");
+			//TODO
 		}
 		
 		else if(strncmp(cmd_line,"quit",4)==0) {
