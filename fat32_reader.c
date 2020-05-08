@@ -181,7 +181,6 @@ void init(char* argv){
 	fseek(fd, 0x2C, SEEK_SET);
 	sizeTDummy = fread(&BPB_RootCluster, 4, 1, fd);
 	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
-
 	//moved declaration to global
 	bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
@@ -210,6 +209,7 @@ void init(char* argv){
  * ----------------------------
  *   Converts the given string into the appropriate short name
  * 	 BUG: This is not (yet) equipped to handle filenames
+ * 	 BUG: If called with no input, will segfault
  * 	 that need to be truncated. EX:  reallylongname.txt -> REALLY~0.txt
  */
 
@@ -422,7 +422,7 @@ char * clean_up_dir_name(char* dirname){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: using strncmp bc DIR_Name has a trailing space */){
+		if(!strncmp(path, dir[i].DIR_Name, 11) /* using strncmp bc DIR_Name has a trailing space */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
 
@@ -431,7 +431,6 @@ void filestat(char *path){
 
 			if(!!(ATTR_HIDDEN & dir[i].DIR_Attr)){
 				printf("Attributes ATTR_HIDDEN\n");
-				printf("If you see this, there is an error in filestat not hiding hidden files\n");
 			}
 			if(!!(ATTR_SYSTEM & dir[i].DIR_Attr)){
 				printf("Attributes ATTR_SYSTEM\n");
@@ -463,6 +462,7 @@ void filestat(char *path){
 *	Log an error if FILE_NAME does not exist.
 *
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
+*	shouldPrint: Whether we should print details to the console or just return the size
 *	return: returns the size if file exists, otherwise 0
 */
 int size(char* path, int shouldPrint){
@@ -478,14 +478,14 @@ int size(char* path, int shouldPrint){
 	}
 	//if we got here, there were no matches
 	if(shouldPrint) printf("Error: file not found");
-	return 0;
+	return -1;
 }
 
 /*
 * read
 * ----------------------------
 *	Description: reads from a file named FILE_NAME, starting at POSITION, and prints NUM_BYTES.
-*	Return an error when trying to read an unopened file. ?! TODO: what is an opened file
+*	Return an error when trying to read an unopened file.
 *
 *	path: the path to examine. Determine if this is a file or directory and if it exists
 */
@@ -494,7 +494,7 @@ void fileread(char* file, int startPos, int numBytes){
 	for(int i = 0; i < MAX_DIR; i++){
 		if(!strncmp(dir[i].DIR_Name, file, 11)){
 			//check if directory
-			if(!!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
+			if(!!((dir[i].DIR_Attr & ATTR_DIRECTORY) || (dir[i].DIR_Attr & ATTR_VOLUME_ID))){
 				printf("ERROR: attempt to read directory");
 				return;
 			}
@@ -502,24 +502,26 @@ void fileread(char* file, int startPos, int numBytes){
 			//we have a match!
 			//ensure what we want to read is within the length:
 			int fsize = size(file, False);
-			if(numBytes >= fsize){
+			if(numBytes + startPos >= fsize){
 				printf("ERROR: Attempted to read outside of file bounds");
 				return;
 			}
 
 			//find the position of the file to read:
-			uint32_t position;
-			char buf[fsize+1/*null terminator*/];
-			uint32_t high = dir[i].DIR_FstClusHi << 4;
+			uint32_t N;
+			char buf[numBytes+1/*null terminator*/];
+			uint32_t high = dir[i].DIR_FstClusHi << 16;
 			uint16_t low = dir[i].DIR_FstClusLo;
-			position = low + high;
-			printf("found starting position %x at file %s",position, dir[i].DIR_Name);
-			int firstSecOfClus = ((position - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes + BPB_RootCluster;
-			fseek(fd, firstSecOfClus, SEEK_SET);
+			N = low + high;
+			printf("found starting cluster %x at file %s",N, dir[i].DIR_Name);
+			uint32_t firstSecOfClus = ((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
+			uint32_t position = firstSecOfClus + startPos;
+			fseek(fd, position, SEEK_SET);
 			//TODO: this works for consecutive data, but fix for nonconsecutive data
-			sizeTDummy = fread(buf, sizeof(char), fsize, fd);
-			buf[fsize] = '\0';
-			printf("%s", buf);
+			sizeTDummy = fread(buf, sizeof(char), numBytes, fd);
+			buf[numBytes] = '\0';
+			//fwrite(buf, 1 , sizeof(buf), stdout);
+			printf("\n%s", buf);
 			return;
 		}
 	}
@@ -596,7 +598,7 @@ int main(int argc, char *argv[])
 		}
 
 		else if(strncmp(cmd_line,"volume",4)==0) {
-			printf("Going to size!\n");
+			printf("Going to volume!\n");
 			volume();
 		}
 
