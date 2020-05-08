@@ -32,7 +32,7 @@
 #define ATTR_VOLUME_ID 0x08
 #define ATTR_DIRECTORY 0x10
 #define ATTR_ARCHIVE 0x20
-
+#define ATTR_DEVICE_FILE 0x40
 
 //image file being made global, represented by the descriptor supplied when first access in init
 FILE *fd;
@@ -308,12 +308,12 @@ void ls(char* path){
 	//TODO: go thru each directory steming from start_dir
 	//this is the dir we begin the program in and it changes based on the cd command
 	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
-	printf(".\t..\t");
+	//printf(".\t..\t");
 	for(int i = 0; i < 16; i++){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
 		//TODO: the ATTR attributes are a mask, not a value
-		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE)){
+		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE || dir[i].DIR_Attr == ATTR_DEVICE_FILE)){
 			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
 		}
 	}
@@ -358,23 +358,25 @@ char * clean_up_dir_name(char* dirname){
 */
 	void
 	change_directory(char *would_like_to_cd_into){
-	would_like_to_cd_into = clean_up_dir_name(would_like_to_cd_into);
+	//skip this step of cleaning up the dir if we are trying to dir "up"
+	if(strncmp(would_like_to_cd_into, "..", 2) != 0){
+		would_like_to_cd_into = clean_up_dir_name(would_like_to_cd_into);
+	}
 	int cluster_hit = -1; //this indicates the dir is not found
 	int change_to_cluster;
 	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
 	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
-	if (strcmp(would_like_to_cd_into, "..") == 0)
-	{
-		for (int i = 0; i < 16; i++)
-		{
-			int comp = strncmp(dir[i].DIR_Name, "..", 2);
-			if (!comp)
-			{
-				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
+	if (strncmp(would_like_to_cd_into, "..", 2) == 0){
+		for (int i = 0; i < 16; i++){
+			//printf("Entering the loop");
+			int bool = strncmp(dir[i].DIR_Name, "..", 2);
+			if (bool == 0){
+				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
 				present_dir = dir[i].DIR_FstClusLo;
+				printf("Seeking to the above directory");
 				fseek(fd, change_to_cluster, SEEK_SET);
-				sizeTDummy = fread(&dir[0], 32, 16, fd);
-				return; //stop here
+				sizeTDummy = fread(&dir[0], 32, 16, fd);//read from beginning of where the seek went to, not dir[i]
+				return; //exit the method
 			}
 		}
 	}
