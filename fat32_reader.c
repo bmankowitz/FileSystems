@@ -41,7 +41,7 @@ FILE *fd;
 uint32_t convertToLocalEndain(uint32_t original);
 uint32_t convertToFAT32Endian(uint32_t original);
 void init(char* argv);
-void print_convert_to_Hex(int n);
+
 	/*strDummy variable for the compiler */
 	char* strDummy = "";
 	int intDummy = 0;
@@ -54,18 +54,6 @@ void print_convert_to_Hex(int n);
  **********************************************************/
 int localEndian = -1;
 
-/*pointers for the fread() function*/
-int BPB_BytesPerSec;
-int BPB_SecPerClus;
-int BPB_RsvdSecCnt;
-int BPB_NumFATS;
-int BPB_FATSz32;
-int BPB_RootCluster;
-int first_sector_of_cluster;
-int bytes_for_reserved;
-int fat_bytes;
-char  * dir_name;
-int present_dir;//not always going to be first dir, meaning once we call 'cd' this will be the present directory
 
 	/**
  * Making the Directory struct 
@@ -88,7 +76,7 @@ int present_dir;//not always going to be first dir, meaning once we call 'cd' th
 
 struct directory dir[MAX_DIR];
 //^this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
-struct directory rootDir;//the root directory, set during init
+struct directory rootDir;//the root directory, set during init, accessed by volume (and maybe 1 more)
 
 	/*
  * endian functions
@@ -152,6 +140,20 @@ uint32_t convertToFAT32Endian(uint32_t original){
  * ----------------------------
  *   open the file image and set it up
  */
+
+/*pointers for the fread() function*/
+int BPB_BytesPerSec;
+int BPB_SecPerClus;
+int BPB_RsvdSecCnt;
+int BPB_NumFATS;
+int BPB_FATSz32;
+int BPB_RootCluster;
+int first_sector_of_cluster;
+int bytes_for_reserved;
+int fat_bytes;
+char  * dir_name;
+int present_dir;//not always going to be first dir, meaning once we call 'cd' this will be the present directory
+
 void init(char* argv){
 	/* Determine whether our machine is big endian or little endian */
 	determineLocalEndian();
@@ -161,7 +163,7 @@ void init(char* argv){
 	printf("%s Opened\n", argv);
 	//fd is our pointer to the file, as a reminder
 	if(fd == NULL){
-		printf("File not exist\n");
+		printf("File does not exist\n");
 		return;
 	}
 
@@ -181,7 +183,6 @@ void init(char* argv){
 	fseek(fd, 0x2C, SEEK_SET);
 	sizeTDummy = fread(&BPB_RootCluster, 4, 1, fd);
 	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
-	//moved declaration to global
 	bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
 	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
@@ -207,32 +208,35 @@ void init(char* argv){
 /*
  * convertToShortName
  * ----------------------------
- *   Converts the given string into the appropriate short name
+ *   Converts the given string into the appropriate short (internal) name
  * 	 BUG: This is not (yet) equipped to handle filenames
- * 	 BUG: If called with no input, will segfault
  * 	 that need to be truncated. EX:  reallylongname.txt -> REALLY~0.txt
+ *   BUG: If called with no input, will segfault
  */
 
 	char* convertToShortName(char* input) {
 		//printf("\nInside of convertToShortName");
-		char* firstPart = malloc(sizeof(char) * 9);//+1 for the null terminator
+		if(input[0] == '.' || input[1] == '.' || input == NULL){
+			return input;//return original string for '.' or '..', and do nothing for null
+		}
+		char* baseName = malloc(sizeof(char) * 9);//+1 for the null terminator
 		char* extension = malloc(sizeof(char) * 4);
 		int i = 0;//position in input
-		int j = 0;//position in outpur
+		int j = 0;//position in output
 		while(i < 8){
 			if(iscntrl(input[i]) || input[i] == '.'){
 				//the end of the string is reached before 8 characters
 				while(j<8){
-					firstPart[j++] = ' ';
+					baseName[j++] = ' ';
 				}
 				break;
 			}
 			else{
-				firstPart[i++] = toupper(input[j++]);
+				baseName[i++] = toupper(input[j++]);
 			}
 
 		}
-		firstPart[8] = '\0';//make sure to null terminate string
+		baseName[8] = '\0';//make sure to null terminate string
 		j = 0; //reset the counter;
 		while(j < 3){
 			i++;//i++ here to skip the '.' if it exists
@@ -245,15 +249,46 @@ void init(char* argv){
 
 		}
 		extension[3] = '\0';//null terminated
-		strcat(firstPart, extension);
+		strcat(baseName, extension);
 				
 		//printf("\nexiting convertToShortName");
 
-		return firstPart;
-		
-
-
+		return baseName; //and the extension added by strcat
 	}
+
+	/*
+ * convertToPrettyName
+ * ----------------------------
+ *   Converts the given string into the appropriate external name
+ * 	 EX: CONST   TXT -> const.txt
+ * 	 BUG: If called with no input, will segfault
+ * 	 that need to be truncated. EX:  reallylongname.txt -> REALLY~0.txt
+ */
+
+	char* convertToPrettyName(char* input) {
+		//printf("\nInside of convertToShortName");
+		char* name = malloc(sizeof(char) * 12);//+1 for the null terminator
+		int namePos = 0;
+		int inputPos = 0;
+		for(;namePos < 11;namePos++){
+			if(input[inputPos] != ' ' && inputPos != 8){
+				name[namePos]=tolower(input[inputPos++]);
+			}
+			else if(inputPos == 8){
+				if(input[9] == ' '){
+					inputPos=11;
+					break;
+				}
+				name[namePos]='.';
+				name[++namePos] = tolower(input[inputPos++]);
+			}
+			else {//white space
+				inputPos++;
+				namePos--;
+			}
+		}
+		return name;
+	}	
 
 /***********************************************************
  * CMD FUNCTIONS
@@ -293,7 +328,8 @@ void info(){
  * ls
  * ----------------------------
  *	Description: lists the contents of DIR_NAME, including “.” and “..”.
- *	path: the path to examine  
+ *	path: the path to examine  	
+ *  TODO: use the path parameter
  */
 void ls(char* path){
 	//calculate the place in file, called change
@@ -313,82 +349,46 @@ void ls(char* path){
 		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
 		//See the chart in the beginning of the source code for clarification on what gets printed
 		//TODO: the ATTR attributes are a mask, not a value
-		if ((dir[i].DIR_Name[0] != (char)0xe5) && (dir[i].DIR_Attr == ATTR_READ_ONLY || dir[i].DIR_Attr == ATTR_DIRECTORY || dir[i].DIR_Attr == ATTR_ARCHIVE || dir[i].DIR_Attr == ATTR_DEVICE_FILE)){
-			printf("%s\t", dir[i].DIR_Name);//this seperates the directories by follow up tab
+		if(dir[i].DIR_Name[0] != (char)0xe5 && !(dir[i].DIR_Attr & ATTR_HIDDEN
+			|| dir[i].DIR_Attr & ATTR_SYSTEM || dir[i].DIR_Attr & ATTR_VOLUME_ID)){
+				printf("%s\t", convertToPrettyName(dir[i].DIR_Name));//this seperates the directories by follow up tab
 		}
 	}
-	printf("\n");//put the "/]"" on the next line once all the dirs are listed
-}
-
-/**
- * This method is used to clean up the dirname when passed to cd
- * In short, it is used to separate the dot (if it exists) in the extension
- * Then it comebines the two possible halfs
- * Regardless, it makes everything one case so the cd method can take uppercase, lowercase, or a mix
- */
-char * clean_up_dir_name(char* dirname){
-	int i;//avoid comp warning
-	char *result;//store the string here
-	char long_name[12];
-	memset(long_name, ' ', 12);//empty string to place the dir into later
-	char *has_dot = strtok(dirname, "."); //resource for the strtok method, deubugging: https://www.tutorialspoint.com/c_standard_library/c_function_strtok.htm
-	//if the dirname has a period, ie when we get the tokens the return is !NULL
-	if (has_dot){
-		strncpy(long_name, has_dot, strlen(has_dot));//transfer the file up until the dot
-		has_dot = strtok(NULL, ".");//continue tokenizing the string used before, see https://stackoverflow.com/questions/23456374/why-do-we-use-null-in-strtok
-		if (has_dot){
-			//insert the extension in the longer dir name
-			strncpy((char *) long_name + 8, has_dot, strlen(has_dot));//doesn't compile because of this line, find another way to go to position 8 in the char*
-		}
-		long_name[11] = '\0';//end of string marker
-		for (i = 0; i < 11; i++){
-			long_name[i] = toupper(long_name[i]);//make everything uppercase SINCE EVERYTHING IN THE FAT32 IS UPPERCASE...not yelling here
-		}
-	} else{
-		//here code runs if we want to cd into a dir without an extension like DIR in our example
-		strncpy(long_name, dirname, strlen(dirname));
-		long_name[11] = '\0';//end of string marker
-	}
-	result = long_name;
-	return result;
 }
 
 	/**
  * cd command 
 */
-	void
-	change_directory(char *would_like_to_cd_into){
-	//skip this step of cleaning up the dir if we are trying to dir "up"
-	if(strncmp(would_like_to_cd_into, "..", 2) != 0){
-		would_like_to_cd_into = clean_up_dir_name(would_like_to_cd_into);
-	}
+void cd(char *newDir){
 	int cluster_hit = -1; //this indicates the dir is not found
 	int change_to_cluster;
-	/*TODO: Check here to see if we should "go up" a dir, if the would_like_to_cd_into is ".."
+	/*TODO: Check here to see if we should "go up" a dir, if the newDir is ".."
 	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
-	if (strncmp(would_like_to_cd_into, "..", 2) == 0){
+	if (strncmp(newDir, "..", 2) == 0){
+		//TODO: see if this actually works
 		for (int i = 0; i < 16; i++){
 			//printf("Entering the loop");
 			int bool = strncmp(dir[i].DIR_Name, "..", 2);
 			if (bool == 0){
 				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
-				present_dir = dir[i].DIR_FstClusLo;
+				present_dir = (dir[i].DIR_FstClusLo) + (dir[i].DIR_FstClusHi << 16);
 				printf("Seeking to the above directory");
 				fseek(fd, change_to_cluster, SEEK_SET);
 				sizeTDummy = fread(&dir[0], 32, 16, fd);//read from beginning of where the seek went to, not dir[i]
-				return; //exit the method
+				return;
 			}
 		}
 	}
 	//when we aren't "moving up" do the following
 	//first examine if the dir we want to cd into exists
 	for (int i = 0; i < 16; i++){
-		char *directory = malloc(11);
-		memset(directory, '\0', 11);
-		memcpy(directory, dir[i].DIR_Name, 11);
-		//compare variable 'directory' with what we'd like to cd into, namely the parameter provided in the method
-		if (strncmp(directory, would_like_to_cd_into, 11) == 0){
-			cluster_hit = dir[i].DIR_FstClusLo; //see page 25 for more info
+		if (strncmp(dir[i].DIR_Name, newDir, 11) == 0){
+			//we have a match. make sure it is a folder not file:
+			if(!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
+				printf("Error: Tried to cd into a directory, but found file instead");
+				return;
+			}
+			cluster_hit = dir[i].DIR_FstClusLo + (dir[i].DIR_FstClusHi << 16); //see page 25 for more info
 			break;
 		}
 	}
@@ -403,7 +403,7 @@ char * clean_up_dir_name(char* dirname){
 	change_to_cluster = ((cluster_hit - 2) * BPB_BytesPerSec) + reserved_byte_count + bytes_in_fat;
 
 	//use this for debugging
-	//printf("This is the cluster to change into: %d", change_to_cluster);
+	printf("This is the cluster to change into: %d", change_to_cluster);
 
 	present_dir = cluster_hit;
 	fseek(fd, change_to_cluster, SEEK_SET);
@@ -427,22 +427,22 @@ void filestat(char *path){
 			printf("Size is %d\n", dir[i].DIR_FileSize);
 
 			if(!!(ATTR_READ_ONLY & dir[i].DIR_Attr))
-				printf("Attributes ATTR_READ_ONLY\n");
+				printf("Attribute: ATTR_READ_ONLY\n");
 
 			if(!!(ATTR_HIDDEN & dir[i].DIR_Attr)){
-				printf("Attributes ATTR_HIDDEN\n");
+				printf("Attribute: ATTR_HIDDEN\n");
 			}
 			if(!!(ATTR_SYSTEM & dir[i].DIR_Attr)){
-				printf("Attributes ATTR_SYSTEM\n");
+				printf("Attribute: ATTR_SYSTEM\n");
 			}
 			if(!!(ATTR_VOLUME_ID & dir[i].DIR_Attr)){
-				printf("Attributes ATTR_VOLUME_ID\n");
+				printf("Attribute: ATTR_VOLUME_ID\n");
 			}
 			if(!!(ATTR_DIRECTORY & dir[i].DIR_Attr)){
-				printf("Attributes ATTR_DIRECTORY\n");
+				printf("Attribute: ATTR_DIRECTORY\n");
 			}
 			if(!!(ATTR_ARCHIVE & dir[i].DIR_Attr)){
-				printf("Attributes ATTR_ARCHIVE\n");
+				printf("Attribute: ATTR_ARCHIVE\n");
 			}
 			//TODO: verify this is what we should print
 			printf("First cluster number is %x%x\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
@@ -464,6 +464,8 @@ void filestat(char *path){
 *	path: the path to examine. Determine if this is a file or directory and print accordingly
 *	shouldPrint: Whether we should print details to the console or just return the size
 *	return: returns the size if file exists, otherwise 0
+
+	shouldPrint: whether or not to print the size to the console
 */
 int size(char* path, int shouldPrint){
 	for(int i = 0; i < MAX_DIR; i++){
@@ -487,28 +489,27 @@ int size(char* path, int shouldPrint){
 *	Description: reads from a file named FILE_NAME, starting at POSITION, and prints NUM_BYTES.
 *	Return an error when trying to read an unopened file.
 *
-*	path: the path to examine. Determine if this is a file or directory and if it exists
+*	file: the file to examine. Determine if this is a file or directory and if it exists
 */
-//TODO: can we just use the system read call? 
 void fileread(char* file, int startPos, int numBytes){
 	for(int i = 0; i < MAX_DIR; i++){
 		if(!strncmp(dir[i].DIR_Name, file, 11)){
 			//check if directory
-			if(!!((dir[i].DIR_Attr & ATTR_DIRECTORY) || (dir[i].DIR_Attr & ATTR_VOLUME_ID))){
+			if(!!(dir[i].DIR_Attr & ATTR_DIRECTORY) || !!(dir[i].DIR_Attr & ATTR_VOLUME_ID)){
+				//TODO: this does not work
 				printf("ERROR: attempt to read directory");
 				return;
 			}
 
-			//we have a match!
 			//ensure what we want to read is within the length:
 			int fsize = size(file, False);
-			if(numBytes + startPos >= fsize){
+			if(numBytes + startPos >= fsize || startPos < 0){
 				printf("ERROR: Attempted to read outside of file bounds");
 				return;
 			}
 
 			//find the position of the file to read:
-			uint32_t N;
+			uint32_t N;//starting cluster
 			char buf[numBytes+1/*null terminator*/];
 			uint32_t high = dir[i].DIR_FstClusHi << 16;
 			uint16_t low = dir[i].DIR_FstClusLo;
@@ -536,6 +537,18 @@ void volume(){
 	rootDir.DIR_Name[11] = '\0';
 	printf("%s",rootDir.DIR_Name);
 	return;
+}
+
+void filemkdir(char* file){
+	//read the fileread and cd commands to figure out how to get the location/offset.
+	//Once we have the offset, we need to add a new dir entry into the dir table (optional)
+	//and write it back to the underlying file.
+}
+
+void filermdir(char* file){
+	//either set the flags to deleted and write back or manually set to 0s and remove FAT entry
+	//this one should be easier than mkdir.
+
 }
 
 /***********************************************************
@@ -604,7 +617,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd into %s\n", &cmd_line[3]);//fix this line
-			change_directory(&cmd_line[3]);
+			cd(convertToShortName(&cmd_line[3]));
 		}
 		else if(strncmp(cmd_line,"mkdir",4)==0) {
 			printf("Going to mkdir!\n");
