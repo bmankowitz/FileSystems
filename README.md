@@ -28,6 +28,6 @@ The program is currently unable to handle filenames longer than 11 characters
 
 With certain file sizes, the ls command may include "junk" characters with the file names
 
-Not all allocated memory is ```free```d
+Not all allocated memory is freed
 
-read might not work for nonconsecutive sectors.
+Read might not work for nonconsecutive sectors, and will segfault if called incorrectly.
