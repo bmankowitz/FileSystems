@@ -24,7 +24,7 @@
 #define B_ENDIAN 1 /* The local OS may be big endian */
 
 #define MAX_CMD 80
-#define MAX_DIR 16
+#define MAX_DIR 255
 
 #define ATTR_READ_ONLY 0x01
 #define ATTR_HIDDEN 0x02
@@ -40,6 +40,7 @@ FILE *fd;
 /* Register Functions and Global Variables */
 uint32_t convertToLocalEndain(uint32_t original);
 uint32_t convertToFAT32Endian(uint32_t original);
+void sanitizeDir(uint32_t offset);
 void init(char* argv);
 
 	/*strDummy variable for the compiler */
@@ -53,7 +54,7 @@ void init(char* argv);
  * Use these for all IO operations
  **********************************************************/
 int localEndian = -1;
-
+uint32_t *fat;
 
 	/**
  * Making the Directory struct 
@@ -75,7 +76,7 @@ int localEndian = -1;
 };
 
 struct directory dir[MAX_DIR];
-//^this will represent the possible directories, 10 is arbitrary...possibly more or less, not sure now
+struct directory stagingDir[MAX_DIR];
 struct directory rootDir;//the root directory, set during init, accessed by volume (and maybe 1 more)
 
 	/*
@@ -186,12 +187,14 @@ void init(char* argv){
 	bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
 	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
-	fseek(fd, first_sector_of_cluster, SEEK_SET);//at the first sector of data
-	//reference the first dir, dir[0] for the root directory
-	sizeTDummy = fread(&dir[0], 32, 16, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
-	//printf("Root addr is 0x%x\n", root_addr);
+	sanitizeDir(first_sector_of_cluster);
+
 	//set rootDir:
 	rootDir = dir[0];
+	//set FAT table:
+	fat = malloc(fat_bytes);
+	fseek(fd, bytes_for_reserved, SEEK_SET);
+	sizeTDummy = fread(fat, 4 /*bytes*/, fat_bytes/32, fd);
 	return;
 }
 
@@ -219,8 +222,8 @@ void init(char* argv){
 		if(input[0] == '.' || input[1] == '.' || input == NULL){
 			return input;//return original string for '.' or '..', and do nothing for null
 		}
-		char* baseName = malloc(sizeof(char) * 9);//+1 for the null terminator
-		char* extension = malloc(sizeof(char) * 4);
+		char* baseName = calloc(sizeof(char), 12);//+1 for the null terminator
+		char* extension = calloc(sizeof(char), 4);
 		int i = 0;//position in input
 		int j = 0;//position in output
 		while(i < 8){
@@ -236,7 +239,6 @@ void init(char* argv){
 			}
 
 		}
-		baseName[8] = '\0';//make sure to null terminate string
 		j = 0; //reset the counter;
 		while(j < 3){
 			i++;//i++ here to skip the '.' if it exists
@@ -248,9 +250,8 @@ void init(char* argv){
 			}
 
 		}
-		extension[3] = '\0';//null terminated
 		strcat(baseName, extension);
-				
+		free(extension);
 		//printf("\nexiting convertToShortName");
 
 		return baseName; //and the extension added by strcat
@@ -267,7 +268,7 @@ void init(char* argv){
 
 	char* convertToPrettyName(char* input) {
 		//printf("\nInside of convertToShortName");
-		char* name = malloc(sizeof(char) * 12);//+1 for the null terminator
+		char* name = calloc(sizeof(char), 12);//+1 for the null terminator
 		int namePos = 0;
 		int inputPos = 0;
 		for(;namePos < 11;namePos++){
@@ -289,6 +290,38 @@ void init(char* argv){
 		}
 		return name;
 	}	
+
+	int getCluster(struct directory thisDir){
+		return (thisDir.DIR_FstClusLo) + (thisDir.DIR_FstClusHi << 16);
+	}
+	uint32_t getOffset(struct directory thisDir){
+		//((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
+		return ((getCluster(thisDir) - 2) * BPB_SecPerClus*BPB_BytesPerSec) + bytes_for_reserved + fat_bytes;
+
+	}
+	void sanitizeDir(uint32_t offset){
+		//zero out previous data:
+		memset(dir,0,sizeof(dir));
+		memset(stagingDir,0,sizeof(stagingDir));
+		//add elements to stagingDir array:
+		fseek(fd, offset, SEEK_SET);//at the first sector of data
+		sizeTDummy = fread(&stagingDir[0], 32, MAX_DIR, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+	
+		//clean remove entries that do not exist in this directory by assuming
+		//that a blank space means the end of the directory:
+
+		for(int i = 0; i < MAX_DIR; i++){
+			//determine if dir exists:
+			//TODO: unclear if strncmp is working correctly
+			if(strncmp(stagingDir[i].DIR_Name, "",11) == 0 &&
+				stagingDir[i].DIR_Attr == 0 &&
+				stagingDir[i].DIR_FileSize == 0 &&
+				stagingDir[i].DIR_FstClusLo == 0 &&
+				stagingDir[i].DIR_FstClusHi == 0) break;
+			else if(stagingDir[i].DIR_Name[0]=='_') continue;//ignore mac artifacts
+			dir[i]= stagingDir[i];
+		}
+	}
 
 /***********************************************************
  * CMD FUNCTIONS
@@ -333,23 +366,13 @@ void info(){
  */
 void ls(char* path){
 	//calculate the place in file, called change
-	int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
-	int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
-	int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
+	//int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
+	//int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
+	//int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
 
-	//printf("Inside ls");//used for debugging purposes
-	//skip to "change" in the file but don't read yet
-	fseek(fd, change, SEEK_SET);
 
-	//TODO: go thru each directory steming from start_dir
-	//this is the dir we begin the program in and it changes based on the cd command
-	//some sort of loop goes here to "pick up" possible files that are child files (directories) pf start_dir
-	//printf(".\t..\t");
-	for(int i = 0; i < 16; i++){
-		sizeTDummy = fread(&dir[i], 32, 1, fd);//one item, a single dir, each 32 bytes
-		//See the chart in the beginning of the source code for clarification on what gets printed
-		//TODO: the ATTR attributes are a mask, not a value
-		if(dir[i].DIR_Name[0] != (char)0xe5 && !(dir[i].DIR_Attr & ATTR_HIDDEN
+	for(int i = 0; i < MAX_DIR; i++){
+		if((dir[i].DIR_Name[0] != (char)0xe5 || dir[i].DIR_Name[0] != ' ')&& !(dir[i].DIR_Attr & ATTR_HIDDEN
 			|| dir[i].DIR_Attr & ATTR_SYSTEM || dir[i].DIR_Attr & ATTR_VOLUME_ID)){
 				printf("%s\t", convertToPrettyName(dir[i].DIR_Name));//this seperates the directories by follow up tab
 		}
@@ -366,22 +389,19 @@ void cd(char *newDir){
 	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
 	if (strncmp(newDir, "..", 2) == 0){
 		//TODO: see if this actually works
-		for (int i = 0; i < 16; i++){
+		for (int i = 0; i < MAX_DIR; i++){
 			//printf("Entering the loop");
-			int bool = strncmp(dir[i].DIR_Name, "..", 2);
-			if (bool == 0){
-				change_to_cluster = ((dir[i].DIR_FstClusLo - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
+			if (!strncmp(dir[i].DIR_Name, "..", 2)){
+				change_to_cluster = ((getCluster(dir[i]) - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
 				present_dir = (dir[i].DIR_FstClusLo) + (dir[i].DIR_FstClusHi << 16);
-				printf("Seeking to the above directory");
-				fseek(fd, change_to_cluster, SEEK_SET);
-				sizeTDummy = fread(&dir[0], 32, 16, fd);//read from beginning of where the seek went to, not dir[i]
+				sanitizeDir(change_to_cluster);
 				return;
 			}
 		}
 	}
 	//when we aren't "moving up" do the following
 	//first examine if the dir we want to cd into exists
-	for (int i = 0; i < 16; i++){
+	for (int i = 0; i < MAX_DIR; i++){
 		if (strncmp(dir[i].DIR_Name, newDir, 11) == 0){
 			//we have a match. make sure it is a folder not file:
 			if(!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
@@ -396,7 +416,7 @@ void cd(char *newDir){
 		printf("Directory not found");
 		return;
 	}
-	//to what are we changing to? first see if its a name (ie not '..')
+	//what are we changing to? first see if its a name (ie not '..')
 	//refer to the ls command for similar structure from here
 	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
@@ -406,8 +426,7 @@ void cd(char *newDir){
 	printf("This is the cluster to change into: %d", change_to_cluster);
 
 	present_dir = cluster_hit;
-	fseek(fd, change_to_cluster, SEEK_SET);
-	sizeTDummy = fread(&dir[0], 32, 16, fd); //this now replaces the "first" dir, not always root, really represents the present_dir hence the switch to lines above
+	sanitizeDir(change_to_cluster);
 }
 
 	/*
@@ -445,7 +464,7 @@ void filestat(char *path){
 				printf("Attribute: ATTR_ARCHIVE\n");
 			}
 			//TODO: verify this is what we should print
-			printf("First cluster number is %x%x\n", dir[i].DIR_FstClusLo,dir[i].DIR_FstClusHi);
+			printf("First cluster number is 0x%x\n", getCluster(dir[i]));
 			return;
 		}
 	}
@@ -517,6 +536,7 @@ void fileread(char* file, int startPos, int numBytes){
 			printf("found starting cluster %x at file %s",N, dir[i].DIR_Name);
 			uint32_t firstSecOfClus = ((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
 			uint32_t position = firstSecOfClus + startPos;
+			printf("Found firstSecOfClus: %x\tFound position: %x",firstSecOfClus, position);
 			fseek(fd, position, SEEK_SET);
 			//TODO: this works for consecutive data, but fix for nonconsecutive data
 			sizeTDummy = fread(buf, sizeof(char), numBytes, fd);
@@ -586,8 +606,24 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
 			//TODO: remove this
-			printf("%x",convertToFAT32Endian(0x1415));
-			printf("%x",convertToLocalEndian(0x1415));
+			//printf("%x",convertToFAT32Endian(0x1415));
+			//printf("%x",convertToLocalEndian(0x1415));
+			if(cmd_line[6] == 'f'){
+				for(int i = 0; fat[i+1] != 0; i++){
+					printf("%lu\n", (unsigned long)fat[i]);
+					sleep(1);
+				}
+			}
+			else if(cmd_line[6] == 'c'){
+				printf("getCluster: %d\n", getCluster(dir[6]));
+				printf("getOffset: %x\n", getOffset(dir[6]));
+			}
+			else{
+				for(int i = 0; i < MAX_DIR; i++){
+					printf("Element %d of stagingDir: %s\n", i, stagingDir[i].DIR_Name);
+					printf("Element %d of dir: %s\n",i,dir[i].DIR_Name);
+				}
+			}
 			//printf("\n the result is %d", 0x10 & 0x11);
 			//printf("The converted string is: %s", convertToShortName(&cmd_line[5]));
 		}
