@@ -22,9 +22,11 @@
 #define False 0
 #define L_ENDIAN 0 /* NOTE that fat32 is always little endian */
 #define B_ENDIAN 1 /* The local OS may be big endian */
+#define DEBUG 1
 
 #define MAX_CMD 80
 #define MAX_DIR 255
+#define MAX_FAT 8192
 
 #define ATTR_READ_ONLY 0x01
 #define ATTR_HIDDEN 0x02
@@ -34,13 +36,17 @@
 #define ATTR_ARCHIVE 0x20
 #define ATTR_DEVICE_FILE 0x40
 
+#define EOC 0x0FFFFFF8
+#define FREE 0x00000000
+#define BAD_CLUSTER 0x0FFFFFF7
+
 //image file being made global, represented by the descriptor supplied when first access in init
 FILE *fd;
 
 /* Register Functions and Global Variables */
 uint32_t convertToLocalEndain(uint32_t original);
 uint32_t convertToFAT32Endian(uint32_t original);
-void sanitizeDir(uint32_t offset);
+void refreshDir(uint32_t cluster);
 void init(char* argv);
 
 	/*strDummy variable for the compiler */
@@ -54,7 +60,9 @@ void init(char* argv);
  * Use these for all IO operations
  **********************************************************/
 int localEndian = -1;
+//uint32_t fat[MAX_FAT];
 uint32_t *fat;
+uint32_t clusterSize;
 
 	/**
  * Making the Directory struct 
@@ -153,7 +161,6 @@ int first_sector_of_cluster;
 int bytes_for_reserved;
 int fat_bytes;
 char  * dir_name;
-int present_dir;//not always going to be first dir, meaning once we call 'cd' this will be the present directory
 
 void init(char* argv){
 	/* Determine whether our machine is big endian or little endian */
@@ -183,18 +190,20 @@ void init(char* argv){
 	/*Get root directory address */
 	fseek(fd, 0x2C, SEEK_SET);
 	sizeTDummy = fread(&BPB_RootCluster, 4, 1, fd);
-	present_dir = BPB_RootCluster;//start at the root cluster and call commands from here
 	bytes_for_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
 	fat_bytes = BPB_BytesPerSec * BPB_FATSz32 * BPB_NumFATS; //multiply how many FATS by amount of fat sectors and bytes per each sector
-	first_sector_of_cluster = ((present_dir - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
-	sanitizeDir(first_sector_of_cluster);
+	first_sector_of_cluster = ((BPB_RootCluster - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
+	clusterSize = BPB_BytesPerSec * BPB_SecPerClus;
 
 	//set rootDir:
 	rootDir = dir[0];
 	//set FAT table:
 	fat = malloc(fat_bytes);
 	fseek(fd, bytes_for_reserved, SEEK_SET);
-	sizeTDummy = fread(fat, 4 /*bytes*/, fat_bytes/32, fd);
+	sizeTDummy = fread(fat, 4 /*bytes*/, fat_bytes/4, fd);
+
+	//populate dir array
+	refreshDir(BPB_RootCluster);
 	return;
 }
 
@@ -292,20 +301,55 @@ void init(char* argv){
 	}	
 
 	int getCluster(struct directory thisDir){
-		return (thisDir.DIR_FstClusLo) + (thisDir.DIR_FstClusHi << 16);
+		int cluster = (thisDir.DIR_FstClusLo) +(thisDir.DIR_FstClusHi << 16);
+		if(cluster == 0) return 2;
+		else{
+			return (thisDir.DIR_FstClusLo) + (thisDir.DIR_FstClusHi << 16);
+		}
 	}
 	uint32_t getOffset(struct directory thisDir){
 		//((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
-		return ((getCluster(thisDir) - 2) * BPB_SecPerClus*BPB_BytesPerSec) + bytes_for_reserved + fat_bytes;
-
+		//((getCluster(dir[i]) - 2) * BPB_BytesPerSec*BPB_SecPerClus) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
+		return ((getCluster(thisDir) - 2) * BPB_SecPerClus*BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
 	}
-	void sanitizeDir(uint32_t offset){
+	uint32_t getOffsetInt(uint32_t currentCluster){
+		//returns THIS cluster's offset
+		if(currentCluster < 0) currentCluster = 2;
+		return ((currentCluster - 2) * BPB_SecPerClus*BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
+	}
+
+	uint32_t getNextClusterOffset(struct directory currentDir){
+		//use this to get the next page address whenver accessing multiple clusters of memory
+		//ex: large files or folders with getNextCluster subdirectories
+		uint32_t cluster = getCluster(currentDir);
+		if(cluster == EOC || cluster == FREE) return -1;
+		return getOffsetInt(fat[cluster]);
+	}
+	uint32_t getNextClusterOffsetInt(int currentCluster){
+		return getOffsetInt(fat[currentCluster]);
+	}
+	uint32_t getNextCluster(int currentCluster){
+		if (currentCluster == 438){
+			//nothing
+		}
+		return fat[currentCluster];
+	}
+
+	void refreshDir(uint32_t cluster){
 		//zero out previous data:
 		memset(dir,0,sizeof(dir));
 		memset(stagingDir,0,sizeof(stagingDir));
 		//add elements to stagingDir array:
-		fseek(fd, offset, SEEK_SET);//at the first sector of data
-		sizeTDummy = fread(&stagingDir[0], 32, MAX_DIR, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+		int dirsToSkip = 0;
+		int dirsPerCluster = clusterSize/32;//32=size of dir entry
+		while(cluster != FREE && cluster < EOC && cluster != BAD_CLUSTER){
+			fseek(fd, getOffsetInt(cluster), SEEK_SET);//at the first sector of data
+			sizeTDummy = fread(&stagingDir[dirsToSkip], 32, dirsPerCluster, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+			if(DEBUG) printf("Dec: %d\t Hex: %x\t EOC: %d\n",cluster, cluster, cluster==EOC);
+			cluster = getNextCluster(cluster);
+			dirsToSkip += dirsPerCluster;
+		}
+		
 	
 		//clean remove entries that do not exist in this directory by assuming
 		//that a blank space means the end of the directory:
@@ -322,7 +366,6 @@ void init(char* argv){
 			dir[i]= stagingDir[i];
 		}
 	}
-
 /***********************************************************
  * CMD FUNCTIONS
  * Implementation of all command line arguments
@@ -370,37 +413,54 @@ void ls(char* path){
 	//int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
 	//int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
 
-
+	if(DEBUG) printf("Cluster Number: %d\tOffset: %d\n", getCluster(dir[0]), getOffset(dir[0]));
 	for(int i = 0; i < MAX_DIR; i++){
 		if((dir[i].DIR_Name[0] != (char)0xe5 || dir[i].DIR_Name[0] != ' ')&& !(dir[i].DIR_Attr & ATTR_HIDDEN
 			|| dir[i].DIR_Attr & ATTR_SYSTEM || dir[i].DIR_Attr & ATTR_VOLUME_ID)){
-				printf("%s\t", convertToPrettyName(dir[i].DIR_Name));//this seperates the directories by follow up tab
+				//snprintf(stdout, 12, "%s\t",dir[i].DIR_Name);
+				char temp[12];
+				strncpy(temp, convertToPrettyName(dir[i].DIR_Name), 11);
+				if(!isalnum(temp[10])) temp[10] = '\0';//remove the question marks
+				temp[11] = '\0';
+				printf("%s\t",temp);//this seperates the directories by follow up tab
 		}
 	}
 }
-
 	/**
  * cd command 
 */
 void cd(char *newDir){
-	int cluster_hit = -1; //this indicates the dir is not found
-	int change_to_cluster;
 	/*TODO: Check here to see if we should "go up" a dir, if the newDir is ".."
-	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory*/
+	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory.
+	We need this one to compare the first char*/
 	if (strncmp(newDir, "..", 2) == 0){
 		//TODO: see if this actually works
 		for (int i = 0; i < MAX_DIR; i++){
 			//printf("Entering the loop");
 			if (!strncmp(dir[i].DIR_Name, "..", 2)){
-				change_to_cluster = ((getCluster(dir[i]) - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
-				present_dir = (dir[i].DIR_FstClusLo) + (dir[i].DIR_FstClusHi << 16);
-				sanitizeDir(change_to_cluster);
+				refreshDir(getCluster(dir[i]));
+				if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
 				return;
 			}
 		}
+		//if there's no results, go to bottom:	
 	}
-	//when we aren't "moving up" do the following
-	//first examine if the dir we want to cd into exists
+	else if(newDir[0] == '.'){//but not dotdot
+		//TODO: see if this actually works
+		for (int i = 0; i < MAX_DIR; i++){
+			//printf("Entering the loop");
+			if (dir[i].DIR_Name[0] == '.'){
+				refreshDir(getCluster(dir[i]));
+				if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
+				return;
+			}
+		}
+
+		//if there's no results, go to bottom:
+		printf("Error: unable to find '%s'",newDir);	
+		}
+	
+	//when we aren't "moving up" check if newDir exists
 	for (int i = 0; i < MAX_DIR; i++){
 		if (strncmp(dir[i].DIR_Name, newDir, 11) == 0){
 			//we have a match. make sure it is a folder not file:
@@ -408,25 +468,12 @@ void cd(char *newDir){
 				printf("Error: Tried to cd into a directory, but found file instead");
 				return;
 			}
-			cluster_hit = dir[i].DIR_FstClusLo + (dir[i].DIR_FstClusHi << 16); //see page 25 for more info
-			break;
+			refreshDir(getCluster(dir[i]));
+			if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
+			return;
 		}
 	}
-	if (cluster_hit == -1){
-		printf("Directory not found");
-		return;
-	}
-	//what are we changing to? first see if its a name (ie not '..')
-	//refer to the ls command for similar structure from here
-	int reserved_byte_count = BPB_BytesPerSec * BPB_RsvdSecCnt;
-	int bytes_in_fat = BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec;
-	change_to_cluster = ((cluster_hit - 2) * BPB_BytesPerSec) + reserved_byte_count + bytes_in_fat;
-
-	//use this for debugging
-	printf("This is the cluster to change into: %d", change_to_cluster);
-
-	present_dir = cluster_hit;
-	sanitizeDir(change_to_cluster);
+	//no results
 }
 
 	/*
