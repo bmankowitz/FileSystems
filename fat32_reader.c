@@ -228,9 +228,11 @@ void init(char* argv){
 
 	char* convertToShortName(char* input) {
 		//printf("\nInside of convertToShortName");
-		if(input[0] == '.' || input[1] == '.' || input == NULL){
+		if(input == NULL){
 			return input;//return original string for '.' or '..', and do nothing for null
 		}
+		else if(input[0] == '.' && input[1] != '.') return ".          ";
+		else if(input[0] == '.' && input[1] == '.' && input[2] != '.') return "..         ";
 		char* baseName = calloc(sizeof(char), 12);//+1 for the null terminator
 		char* extension = calloc(sizeof(char), 4);
 		int i = 0;//position in input
@@ -433,32 +435,6 @@ void cd(char *newDir){
 	/*TODO: Check here to see if we should "go up" a dir, if the newDir is ".."
 	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory.
 	We need this one to compare the first char*/
-	if (strncmp(newDir, "..", 2) == 0){
-		//TODO: see if this actually works
-		for (int i = 0; i < MAX_DIR; i++){
-			//printf("Entering the loop");
-			if (!strncmp(dir[i].DIR_Name, "..", 2)){
-				refreshDir(getCluster(dir[i]));
-				if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
-				return;
-			}
-		}
-		//if there's no results, go to bottom:	
-	}
-	else if(newDir[0] == '.'){//but not dotdot
-		//TODO: see if this actually works
-		for (int i = 0; i < MAX_DIR; i++){
-			//printf("Entering the loop");
-			if (dir[i].DIR_Name[0] == '.'){
-				refreshDir(getCluster(dir[i]));
-				if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
-				return;
-			}
-		}
-
-		//if there's no results, go to bottom:
-		printf("Error: unable to find '%s'",newDir);	
-		}
 	
 	//when we aren't "moving up" check if newDir exists
 	for (int i = 0; i < MAX_DIR; i++){
@@ -473,7 +449,9 @@ void cd(char *newDir){
 			return;
 		}
 	}
-	//no results
+	//no results:
+	printf("Error: unable to find '%s'",newDir);	
+
 }
 
 	/*
@@ -488,7 +466,7 @@ void cd(char *newDir){
 */
 void filestat(char *path){
 	for(int i = 0; i < MAX_DIR; i++){
-		if(!strncmp(path, dir[i].DIR_Name, 11) /* using strncmp bc DIR_Name has a trailing space */){
+		if(!strncmp(path, dir[i].DIR_Name, 11)/* using strncmp bc DIR_Name has a trailing space */){
 			//found match!
 			printf("Size is %d\n", dir[i].DIR_FileSize);
 
@@ -560,8 +538,10 @@ int size(char* path, int shouldPrint){
 void fileread(char* file, int startPos, int numBytes){
 	for(int i = 0; i < MAX_DIR; i++){
 		if(!strncmp(dir[i].DIR_Name, file, 11)){
+			//Name match!
+
 			//check if directory
-			if(!!(dir[i].DIR_Attr & ATTR_DIRECTORY) || !!(dir[i].DIR_Attr & ATTR_VOLUME_ID)){
+			if((dir[i].DIR_Attr & ATTR_DIRECTORY) || (dir[i].DIR_Attr & ATTR_VOLUME_ID)){
 				//TODO: this does not work
 				printf("ERROR: attempt to read directory");
 				return;
@@ -575,21 +555,35 @@ void fileread(char* file, int startPos, int numBytes){
 			}
 
 			//find the position of the file to read:
-			uint32_t N;//starting cluster
+			// uint32_t N;//starting cluster
 			char buf[numBytes+1/*null terminator*/];
-			uint32_t high = dir[i].DIR_FstClusHi << 16;
-			uint16_t low = dir[i].DIR_FstClusLo;
-			N = low + high;
-			printf("found starting cluster %x at file %s",N, dir[i].DIR_Name);
-			uint32_t firstSecOfClus = ((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
-			uint32_t position = firstSecOfClus + startPos;
-			printf("Found firstSecOfClus: %x\tFound position: %x",firstSecOfClus, position);
-			fseek(fd, position, SEEK_SET);
-			//TODO: this works for consecutive data, but fix for nonconsecutive data
-			sizeTDummy = fread(buf, sizeof(char), numBytes, fd);
+			//New plan: read in the entire cluster that has any relevant byte, then only print out
+			//the parts that we need. Something like printf(buf[startingPosition]
+			//While there is probably a cleaner way, this is what I thought of and is easy to implement
+			int bytesToSkip = 0;//buffer offset
+			int bytesPerCluster = clusterSize;
+			int bytesToRead = clusterSize;//how many bytes to read for this iteration
+			int bufInitialOffset = startPos % clusterSize;
+			int totalRemainingBytes = numBytes; //the bytes left to read for the entire file
+			uint32_t cluster = getCluster(dir[i]);
+			while(cluster != FREE && cluster != BAD_CLUSTER && (totalRemainingBytes > 0)){
+				if(totalRemainingBytes >= clusterSize){ bytesToRead = clusterSize;}
+				else{ bytesToRead = totalRemainingBytes;}
+				totalRemainingBytes -= clusterSize;
+				fseek(fd, getOffsetInt(cluster), SEEK_SET);//at the first sector of data
+				sizeTDummy = fread(&buf[bytesToSkip], sizeof(char), bytesToRead, fd);//shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+				if(DEBUG) printf("\nDec: %d\t Hex: %x\t EOC: %d\n",cluster, cluster, cluster==EOC);
+
+				//now that we finished, check if EOC and increment values:
+				if(cluster >= EOC){
+					break;
+				}
+				cluster = getNextCluster(cluster);
+				bytesToSkip += bytesPerCluster;
+			}
+
 			buf[numBytes] = '\0';
-			//fwrite(buf, 1 , sizeof(buf), stdout);
-			printf("\n%s", buf);
+			printf("\n%s", buf + bufInitialOffset);
 			return;
 		}
 	}
@@ -651,30 +645,6 @@ int main(int argc, char *argv[])
 			filestat(convertToShortName(&cmd_line[5]));
 		}
 
-		else if(strncmp(cmd_line, "test",4)==0){//REMOVE THIS BEFORE WE FINISH
-			//TODO: remove this
-			//printf("%x",convertToFAT32Endian(0x1415));
-			//printf("%x",convertToLocalEndian(0x1415));
-			if(cmd_line[6] == 'f'){
-				for(int i = 0; fat[i+1] != 0; i++){
-					printf("%lu\n", (unsigned long)fat[i]);
-					sleep(1);
-				}
-			}
-			else if(cmd_line[6] == 'c'){
-				printf("getCluster: %d\n", getCluster(dir[6]));
-				printf("getOffset: %x\n", getOffset(dir[6]));
-			}
-			else{
-				for(int i = 0; i < MAX_DIR; i++){
-					printf("Element %d of stagingDir: %s\n", i, stagingDir[i].DIR_Name);
-					printf("Element %d of dir: %s\n",i,dir[i].DIR_Name);
-				}
-			}
-			//printf("\n the result is %d", 0x10 & 0x11);
-			//printf("The converted string is: %s", convertToShortName(&cmd_line[5]));
-		}
-		
 		else if(strncmp(cmd_line,"ls",2)==0) {
 			printf("Going to ls.\n");
 			ls(&cmd_line[3]);
