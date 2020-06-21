@@ -16,9 +16,10 @@
 #include <dirent.h>
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 /* Put any symbolic constants (defines) here */
-#define True 1  /* C has no booleans! */
+#define True 1  /* C has no booleans! -Ben: Now it does!*/
 #define False 0
 #define L_ENDIAN 0 /* NOTE that fat32 is always little endian */
 #define B_ENDIAN 1 /* The local OS may be big endian */
@@ -48,6 +49,7 @@ uint32_t convertToLocalEndain(uint32_t original);
 uint32_t convertToFAT32Endian(uint32_t original);
 void refreshDir(uint32_t cluster);
 void init(char* argv);
+bool cd(char *newDir);
 
 	/*strDummy variable for the compiler */
 	char* strDummy = "";
@@ -55,12 +57,7 @@ void init(char* argv);
 	size_t sizeTDummy = 5;
 	/*End of strDummy stuff */
 
-	/***********************************************************
- * HELPER FUNCTIONS
- * Use these for all IO operations
- **********************************************************/
 int localEndian = -1;
-//uint32_t fat[MAX_FAT];
 uint32_t *fat;
 uint32_t clusterSize;
 
@@ -77,15 +74,17 @@ uint32_t clusterSize;
 	uint16_t DIR_FstClusLo;//2 bytes
 	uint32_t DIR_FileSize;//4 bytes
 	//in total, 32 bytes
-
-	//to ease calculations, I am attaching the following to each "dir"
-	//actually ignoring this for now. unsure if it's wise to play with this struct
-	//uint32_t firstSecOfClus = ((DIR_- 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 };
 
 struct directory dir[MAX_DIR];
 struct directory stagingDir[MAX_DIR];
 struct directory rootDir;//the root directory, set during init, accessed by volume (and maybe 1 more)
+
+
+/**********************************************************
+ * HELPER FUNCTIONS
+ * Use these for all IO operations
+ **********************************************************/
 
 	/*
  * endian functions
@@ -195,8 +194,6 @@ void init(char* argv){
 	first_sector_of_cluster = ((BPB_RootCluster - 2) * BPB_SecPerClus) + bytes_for_reserved + fat_bytes;
 	clusterSize = BPB_BytesPerSec * BPB_SecPerClus;
 
-	//set rootDir:
-	rootDir = dir[0];
 	//set FAT table:
 	fat = malloc(fat_bytes);
 	fseek(fd, bytes_for_reserved, SEEK_SET);
@@ -204,6 +201,9 @@ void init(char* argv){
 
 	//populate dir array
 	refreshDir(BPB_RootCluster);
+
+	//set rootDir:
+	rootDir = dir[0];
 	return;
 }
 
@@ -331,9 +331,6 @@ void init(char* argv){
 		return getOffsetInt(fat[currentCluster]);
 	}
 	uint32_t getNextCluster(int currentCluster){
-		if (currentCluster == 438){
-			//nothing
-		}
 		return fat[currentCluster];
 	}
 
@@ -367,6 +364,16 @@ void init(char* argv){
 			else if(stagingDir[i].DIR_Name[0]=='_') continue;//ignore mac artifacts
 			dir[i]= stagingDir[i];
 		}
+	}
+	void printFullPath(){
+		struct directory dirCopy[MAX_DIR];
+		dirCopy = dir;//save this because we wil cd .. until we get an error;
+		printf("/");
+		while(cd(convertToShortName(".."))){
+			printf("%s",dir[0].DIR_Name);
+		}
+
+		printf("]");
 	}
 /***********************************************************
  * CMD FUNCTIONS
@@ -410,16 +417,20 @@ void info(){
  *  TODO: use the path parameter
  */
 void ls(char* path){
-	//calculate the place in file, called change
-	//int bytes_in_reserved = BPB_BytesPerSec * BPB_RsvdSecCnt;
-	//int fat_sector_bytes = BPB_FATSz32 * BPB_NumFATS * BPB_BytesPerSec;//see the setting up method, init for same procedure
-	//int change = ((present_dir - 2) * BPB_BytesPerSec) + bytes_in_reserved + fat_sector_bytes;
-
+	int changedDir = False;
+	if(strncmp(path, "           ",11)){
+		//the path is not blank, so we need to cd to the specified dir, then cd to '..'
+		if(cd(path)) changedDir = True;
+		else{
+			//cd returned an error. abort.
+			//we don't need to print an error because cd already did.
+			return;
+		}
+	}
 	if(DEBUG) printf("Cluster Number: %d\tOffset: %d\n", getCluster(dir[0]), getOffset(dir[0]));
 	for(int i = 0; i < MAX_DIR; i++){
 		if((dir[i].DIR_Name[0] != (char)0xe5 || dir[i].DIR_Name[0] != ' ')&& !(dir[i].DIR_Attr & ATTR_HIDDEN
 			|| dir[i].DIR_Attr & ATTR_SYSTEM || dir[i].DIR_Attr & ATTR_VOLUME_ID)){
-				//snprintf(stdout, 12, "%s\t",dir[i].DIR_Name);
 				char temp[12];
 				strncpy(temp, convertToPrettyName(dir[i].DIR_Name), 11);
 				if(!isalnum(temp[10])) temp[10] = '\0';//remove the question marks
@@ -427,31 +438,31 @@ void ls(char* path){
 				printf("%s\t",temp);//this seperates the directories by follow up tab
 		}
 	}
+	if(changedDir){
+		cd(convertToShortName(".."));
+	}
 }
 	/**
  * cd command 
+ * return true of successful cd, false for error
 */
-void cd(char *newDir){
-	/*TODO: Check here to see if we should "go up" a dir, if the newDir is ".."
-	reference the cluster_hi cluster_lo bytes to see how to "move up" in a file directory.
-	We need this one to compare the first char*/
-	
-	//when we aren't "moving up" check if newDir exists
+bool cd(char *newDir){
+	//check if the input is a valid dir entry
 	for (int i = 0; i < MAX_DIR; i++){
 		if (strncmp(dir[i].DIR_Name, newDir, 11) == 0){
-			//we have a match. make sure it is a folder not file:
+			//we have a name match! make sure it is not a file:
 			if(!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
 				printf("Error: Tried to cd into a directory, but found file instead");
-				return;
+				return false;
 			}
 			refreshDir(getCluster(dir[i]));
 			if(DEBUG) printf("Going to offset: %d\n",getOffset(dir[i]));
-			return;
+			return true;
 		}
 	}
 	//no results:
 	printf("Error: unable to find '%s'",newDir);	
-
+	return false;
 }
 
 	/*
@@ -630,6 +641,7 @@ int main(int argc, char *argv[])
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
 		//printf("\n/%s] ", dir[1].DIR_Name);//better readability when typing commands
+		//TODO: implement it so that it uses the filepath: /dir/a/]
 		printf("\n/] ");//better readability when typing commands
 		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
@@ -647,7 +659,7 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"ls",2)==0) {
 			printf("Going to ls.\n");
-			ls(&cmd_line[3]);
+			ls(convertToShortName(&cmd_line[3]));
 		}
 		
 		else if(strncmp(cmd_line,"read",4)==0) {
@@ -663,7 +675,7 @@ int main(int argc, char *argv[])
 			size(convertToShortName(&cmd_line[5]), True);
 		}
 
-		else if(strncmp(cmd_line,"volume",4)==0) {
+		else if(strncmp(cmd_line,"volume",6)==0) {
 			printf("Going to volume!\n");
 			volume();
 		}
@@ -672,11 +684,11 @@ int main(int argc, char *argv[])
 			printf("Going to cd into %s\n", &cmd_line[3]);//fix this line
 			cd(convertToShortName(&cmd_line[3]));
 		}
-		else if(strncmp(cmd_line,"mkdir",4)==0) {
+		else if(strncmp(cmd_line,"mkdir",5)==0) {
 			printf("Going to mkdir!\n");
 			//TODO
 		}
-		else if(strncmp(cmd_line,"rmdir",4)==0) {
+		else if(strncmp(cmd_line,"rmdir",5)==0) {
 			printf("Going to rmdir!\n");
 			//TODO
 		}
