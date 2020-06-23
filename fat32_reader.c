@@ -23,11 +23,12 @@
 #define False 0
 #define L_ENDIAN 0 /* NOTE that fat32 is always little endian */
 #define B_ENDIAN 1 /* The local OS may be big endian */
-#define DEBUG 1
+#define DEBUG 0
 
 #define MAX_CMD 80
 #define MAX_DIR 255
 #define MAX_FAT 8192
+#define MAX_BUF 512
 
 #define ATTR_READ_ONLY 0x01
 #define ATTR_HIDDEN 0x02
@@ -49,7 +50,7 @@ uint32_t convertToLocalEndain(uint32_t original);
 uint32_t convertToFAT32Endian(uint32_t original);
 void refreshDir(uint32_t cluster);
 void init(char* argv);
-bool cd(char *newDir);
+bool cd(char *newDir, bool shouldPrint);
 
 	/*strDummy variable for the compiler */
 	char* strDummy = "";
@@ -79,7 +80,7 @@ uint32_t clusterSize;
 struct directory dir[MAX_DIR];
 struct directory stagingDir[MAX_DIR];
 struct directory rootDir;//the root directory, set during init, accessed by volume (and maybe 1 more)
-
+struct directory zeroDir;
 
 /**********************************************************
  * HELPER FUNCTIONS
@@ -166,7 +167,7 @@ void init(char* argv){
 	determineLocalEndian();
 
 	/* Parse args and open our image file */
-	fd = fopen(argv, "r"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+	fd = fopen(argv, "r+s"); //https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 	printf("%s Opened\n", argv);
 	//fd is our pointer to the file, as a reminder
 	if(fd == NULL){
@@ -204,6 +205,10 @@ void init(char* argv){
 
 	//set rootDir:
 	rootDir = dir[0];
+
+	//set zeroDir:
+	memset(&zeroDir, 0, sizeof(struct directory));
+
 	return;
 }
 
@@ -331,7 +336,26 @@ void init(char* argv){
 		return getOffsetInt(fat[currentCluster]);
 	}
 	uint32_t getNextCluster(int currentCluster){
+		if(currentCluster == EOC || currentCluster == BAD_CLUSTER){
+			return -1;
+		}
 		return fat[currentCluster];
+	}
+	uint32_t getFirstFreeCluster(){
+		for(int i =0; i < MAX_FAT; i++){
+			if(fat[i] == FREE) return i;
+		}
+		//otherwise no available space:
+		return -1;
+	}
+	bool setCluster(uint32_t cluster, uint32_t newValue){
+		if(cluster >= 0 && cluster <= MAX_FAT){
+			fat[cluster] = newValue;
+			return true;
+		}
+		//invalid cluster number:
+		return false;
+
 	}
 
 	void refreshDir(uint32_t cluster){
@@ -367,13 +391,33 @@ void init(char* argv){
 	}
 	void printFullPath(){
 		struct directory dirCopy[MAX_DIR];
-		dirCopy = dir;//save this because we wil cd .. until we get an error;
-		printf("/");
-		while(cd(convertToShortName(".."))){
-			printf("%s",dir[0].DIR_Name);
-		}
+		struct directory prevDir;
+		//copy dir into dirCopy:
+		const char* buf[MAX_BUF];
+		int bufPos = 0;
 
-		printf("]");
+		memcpy(dirCopy, dir, sizeof(dir));
+		prevDir = dir[0];
+		while(cd(convertToShortName(".."), false)){
+			for(int i = 0; i < MAX_DIR; i++){
+				if(getCluster(dir[i]) == getCluster(prevDir)){
+					buf[bufPos++] = convertToPrettyName(dir[i].DIR_Name);
+					prevDir = dir[0];
+					break;
+				}
+			}
+		}
+		//now to print out the saved strings in reverse order:
+		printf("\n/");
+		for(;bufPos >= 0; bufPos--){
+			if(buf[bufPos] == NULL){
+				continue;
+			}
+			printf("%s/",buf[bufPos]);
+		}
+		printf("] ");
+		//restore the original dir:
+		memcpy(dir, dirCopy, sizeof(dirCopy));
 	}
 /***********************************************************
  * CMD FUNCTIONS
@@ -420,10 +464,10 @@ void ls(char* path){
 	int changedDir = False;
 	if(strncmp(path, "           ",11)){
 		//the path is not blank, so we need to cd to the specified dir, then cd to '..'
-		if(cd(path)) changedDir = True;
+		if(cd(path, false)) changedDir = True;
 		else{
 			//cd returned an error. abort.
-			//we don't need to print an error because cd already did.
+			printf("Error: '%s' could not be opened. Ensure it exists (and is a directory) and try again", convertToPrettyName(path));
 			return;
 		}
 	}
@@ -439,20 +483,20 @@ void ls(char* path){
 		}
 	}
 	if(changedDir){
-		cd(convertToShortName(".."));
+		cd(convertToShortName(".."), 0);
 	}
 }
 	/**
  * cd command 
  * return true of successful cd, false for error
 */
-bool cd(char *newDir){
+bool cd(char *newDir, bool shouldPrint){
 	//check if the input is a valid dir entry
 	for (int i = 0; i < MAX_DIR; i++){
 		if (strncmp(dir[i].DIR_Name, newDir, 11) == 0){
 			//we have a name match! make sure it is not a file:
 			if(!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
-				printf("Error: Tried to cd into a directory, but found file instead");
+				if(shouldPrint) printf("Error: Tried to cd into a directory, but found file instead");
 				return false;
 			}
 			refreshDir(getCluster(dir[i]));
@@ -461,7 +505,7 @@ bool cd(char *newDir){
 		}
 	}
 	//no results:
-	printf("Error: unable to find '%s'",newDir);	
+	if(shouldPrint) printf("Error: unable to find '%s'",convertToPrettyName(newDir));	
 	return false;
 }
 
@@ -505,7 +549,7 @@ void filestat(char *path){
 		}
 	}
 	//File not found
-	printf("Error: file/directory does not exist\n");
+	printf("Error: unable to find '%s'",convertToPrettyName(path));
 	return;
 }
 
@@ -534,7 +578,7 @@ int size(char* path, int shouldPrint){
 		}
 	}
 	//if we got here, there were no matches
-	if(shouldPrint) printf("Error: file not found");
+	if(shouldPrint) printf("Error: unable to find '%s'",convertToPrettyName(path));
 	return -1;
 }
 
@@ -598,7 +642,7 @@ void fileread(char* file, int startPos, int numBytes){
 			return;
 		}
 	}
-	printf("ERROR: Unable to find file");
+	printf("Error: unable to find '%s'", convertToPrettyName(file));
 }
 
 void volume(){
@@ -615,6 +659,89 @@ void filemkdir(char* file){
 	//read the fileread and cd commands to figure out how to get the location/offset.
 	//Once we have the offset, we need to add a new dir entry into the dir table (optional)
 	//and write it back to the underlying file.
+
+	//check if file exists:
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strncmp(dir[i].DIR_Name, file, 11)){
+			//Name match!
+			printf("Error: '%s' already exists", convertToPrettyName(file));
+			return;
+		}
+	}
+
+	//get the cluster number
+	uint32_t newDirCluster;
+	if((newDirCluster = getFirstFreeCluster()) == -1){
+		printf("Error: unable to find free cluster");
+		return;
+	}
+
+	//setup the new dir:
+	struct directory dot;
+	struct directory dotdot;
+	struct directory newDir;
+	newDir.DIR_Attr = ATTR_DIRECTORY;	
+	newDir.DIR_FileSize = 0;
+	newDir.DIR_FstClusHi = newDirCluster & 0xFFFF0000;
+	newDir.DIR_FstClusLo = newDirCluster & 0x0000FFFF;
+	strncpy(newDir.DIR_Name, convertToShortName(file),11);
+
+	//set dot:
+	dot = newDir;
+	memcpy(dot.DIR_Name, ".          ", 11);//using memcpy so there is no trailing space
+
+	//set dotdot:
+	dotdot = dir[0];
+	memcpy(dotdot.DIR_Name, "..         ", 11);
+
+
+	
+	//set the fat as taken:
+	if (!setCluster(newDirCluster, EOC)){
+ 		printf("ERROR: unable to set fat table cluster");
+		return;
+	}
+	//add new entry to dir:
+	for(int i = 0; i < MAX_DIR; i++){
+		if(strncmp(dir[i].DIR_Name, "",11) == 0 &&
+				dir[i].DIR_Attr == 0 &&
+				dir[i].DIR_FileSize == 0 &&
+				dir[i].DIR_FstClusLo == 0 &&
+				dir[i].DIR_FstClusHi == 0){
+					//found empty spot in dir. Add the new entry.
+					dir[i] = newDir;
+					dir[i+1] = zeroDir;
+					//write data to fat32 img (to add this entry to previous dir):
+					int dirsToSkip = 0;
+					int dirsPerCluster = clusterSize / 32; //32=size of dir entry
+					int cluster = getCluster(dir[0]);
+					//TODO: this will probably fail if we need to allocate a new cluster to contain the newDir
+					while (cluster != FREE && cluster != BAD_CLUSTER){
+						fseek(fd, getOffsetInt(cluster), SEEK_SET);					   //at the first sector of data
+						sizeTDummy = fwrite(&dir[dirsToSkip], 32, dirsPerCluster, fd); //shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+						if(cluster == EOC || dirsToSkip >= i+1) break;
+						cluster = getNextCluster(cluster);
+						dirsToSkip += dirsPerCluster;
+					}
+					//write dot and dotdot to the fat32 img:
+					fseek(fd, getOffset(newDir), SEEK_SET);
+					sizeTDummy = fwrite(&dot, 32, 32, fd);
+					fseek(fd, getOffset(newDir)+32, SEEK_SET);
+					sizeTDummy = fwrite(&dotdot, 32, 32, fd);
+					fseek(fd, getOffset(newDir)+64, SEEK_SET);
+					sizeTDummy = fwrite(&zeroDir, 32, 32, fd);
+					break;
+				}
+	}
+
+	//write the FAT to fat32 img:
+	fseek(fd, bytes_for_reserved, SEEK_SET);
+	sizeTDummy = fwrite(fat, 4 /*bytes*/, fat_bytes/4, fd);
+
+	//refresh the directory:
+	refreshDir(getCluster(dot));
+	//cd(dotdot.DIR_Name, 1);
+	return;
 }
 
 void filermdir(char* file){
@@ -640,9 +767,7 @@ int main(int argc, char *argv[])
 
 	while(True) {
 		bzero(cmd_line, MAX_CMD);
-		//printf("\n/%s] ", dir[1].DIR_Name);//better readability when typing commands
-		//TODO: implement it so that it uses the filepath: /dir/a/]
-		printf("\n/] ");//better readability when typing commands
+		printFullPath();
 		strDummy = fgets(cmd_line,MAX_CMD,stdin);
 
 		/* Start comparing input */
@@ -682,11 +807,11 @@ int main(int argc, char *argv[])
 
 		else if(strncmp(cmd_line,"cd",2)==0) {
 			printf("Going to cd into %s\n", &cmd_line[3]);//fix this line
-			cd(convertToShortName(&cmd_line[3]));
+			cd(convertToShortName(&cmd_line[3]), true);
 		}
 		else if(strncmp(cmd_line,"mkdir",5)==0) {
 			printf("Going to mkdir!\n");
-			//TODO
+			filemkdir(convertToShortName(&cmd_line[6]));
 		}
 		else if(strncmp(cmd_line,"rmdir",5)==0) {
 			printf("Going to rmdir!\n");
