@@ -342,7 +342,8 @@ void init(char* argv){
 		return fat[currentCluster];
 	}
 	uint32_t getFirstFreeCluster(){
-		for(int i =0; i < MAX_FAT; i++){
+		//if i < 5, there seem to be some issues with overwriting data.
+		for(int i=5; i < MAX_FAT; i++){
 			if(fat[i] == FREE) return i;
 		}
 		//otherwise no available space:
@@ -372,7 +373,6 @@ void init(char* argv){
 			cluster = getNextCluster(cluster);
 			dirsToSkip += dirsPerCluster;
 		}
-		
 	
 		//clean remove entries that do not exist in this directory by assuming
 		//that a blank space means the end of the directory:
@@ -388,6 +388,10 @@ void init(char* argv){
 			else if(stagingDir[i].DIR_Name[0]=='_') continue;//ignore mac artifacts
 			dir[i]= stagingDir[i];
 		}
+
+		//read in the FAT:
+		fseek(fd, bytes_for_reserved, SEEK_SET);
+		sizeTDummy = fread(fat, 4 /*bytes*/, fat_bytes/4, fd);
 	}
 	void printFullPath(){
 		struct directory dirCopy[MAX_DIR];
@@ -717,8 +721,8 @@ void filemkdir(char* file){
 					int cluster = getCluster(dir[0]);
 					//TODO: this will probably fail if we need to allocate a new cluster to contain the newDir
 					while (cluster != FREE && cluster != BAD_CLUSTER){
-						fseek(fd, getOffsetInt(cluster), SEEK_SET);					   //at the first sector of data
-						sizeTDummy = fwrite(&dir[dirsToSkip], 32, dirsPerCluster, fd); //shorthand for 512 bytes 32*16=512, read into the first dir struct, ie root, everything offset from here
+						fseek(fd, getOffsetInt(cluster), SEEK_SET);
+						sizeTDummy = fwrite(&dir[dirsToSkip], 32, dirsPerCluster, fd);
 						if(cluster == EOC || dirsToSkip >= i+1) break;
 						cluster = getNextCluster(cluster);
 						dirsToSkip += dirsPerCluster;
@@ -737,10 +741,12 @@ void filemkdir(char* file){
 	//write the FAT to fat32 img:
 	fseek(fd, bytes_for_reserved, SEEK_SET);
 	sizeTDummy = fwrite(fat, 4 /*bytes*/, fat_bytes/4, fd);
-
+	
+	//for some reason the file doesn't appear until we start from the very beginning
+	refreshDir(BPB_RootCluster);
 	//refresh the directory:
-	refreshDir(getCluster(dot));
-	//cd(dotdot.DIR_Name, 1);
+	refreshDir(getCluster(dotdot));
+
 	return;
 }
 
@@ -748,6 +754,68 @@ void filermdir(char* file){
 	//either set the flags to deleted and write back or manually set to 0s and remove FAT entry
 	//this one should be easier than mkdir.
 
+	//check if file exists:
+	for(int i = 0; i < MAX_DIR; i++){
+		if(!strncmp(dir[i].DIR_Name, file, 11)){
+			//Name match!
+
+			//check if file:
+				if(!(dir[i].DIR_Attr & ATTR_DIRECTORY)){
+					printf("Error: '%s' is not a directory", convertToPrettyName(file));
+					return;
+				}
+
+			//check if empty:
+				if(!cd(file, 0)) printf("Error: '%s' is malformed", convertToPrettyName(file));
+				if(!(memcmp(&dir[2], &zeroDir, sizeof(struct directory)) || dir[2].DIR_Name[0] != 0x0)){
+					printf("Error: '%s' is not empty", convertToPrettyName(file));
+					if(!cd(convertToShortName(".."), 0)) printf("Error: '%s' is malformed", convertToPrettyName(file));
+					return;
+				}
+				if(!cd(convertToShortName(".."), 0)) printf("Error: '%s' is malformed", convertToPrettyName(file));
+
+			//set DIR_Name[0] to 0x0:
+				//TODO: in a future version, implement 0xe5 meaning end of dir cluster. also change refreshDir
+				dir[i].DIR_Name[0] = (char) 0x0;
+				//write data to fat32 img:
+					int dirsToSkip = 0;
+					int dirsPerCluster = clusterSize / 32; //32=size of dir entry
+					int cluster = getCluster(dir[0]);
+					while (cluster != FREE && cluster != BAD_CLUSTER){
+						fseek(fd, getOffsetInt(cluster), SEEK_SET);
+						sizeTDummy = fwrite(&dir[dirsToSkip], 32, dirsPerCluster, fd);
+						if(cluster == EOC || dirsToSkip > i) break;
+						cluster = getNextCluster(cluster);
+						dirsToSkip += dirsPerCluster;
+					}
+			//set the cluster chain as free:
+				//yes, this is wasteful. Not sure how to dynamically add elements in C
+				uint32_t clustersToBeCleared[MAX_FAT];
+				cluster = getCluster(dir[i]);
+				clustersToBeCleared[0] = cluster;
+				cluster = getCluster(dir[i]);
+				for(int i = 1; i < MAX_FAT; i++){
+					if((cluster = getNextCluster(cluster)) == EOC){
+						//found the last cluster. set all previous entries to free
+						i--;
+						for(;i > 0; i--){
+							
+							setCluster(clustersToBeCleared[i], FREE);
+						}
+						//write the new FAT to fat32 img
+						fseek(fd, bytes_for_reserved, SEEK_SET);
+						sizeTDummy = fwrite(fat, 4 /*bytes*/, fat_bytes/4, fd);
+						break;
+					}
+					clustersToBeCleared[i] = cluster;
+				}
+				//refresh the dir:
+				refreshDir(getCluster(dir[0]));
+				return;
+			}
+		}
+	//unable to find dir:
+	printf("Error: unable to find '%s'", convertToPrettyName(file));
 }
 
 /***********************************************************
@@ -815,7 +883,7 @@ int main(int argc, char *argv[])
 		}
 		else if(strncmp(cmd_line,"rmdir",5)==0) {
 			printf("Going to rmdir!\n");
-			//TODO
+			filermdir(convertToShortName(&cmd_line[6]));		
 		}
 		
 		else if(strncmp(cmd_line,"quit",4)==0) {
