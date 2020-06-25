@@ -32,4 +32,4 @@ Read might not work for nonconsecutive sectors, and will segfault if called inco
 
 There was an issue where mkdir would occasionally overwrite other data in the fat32 image. I can not reproduce the issue, so it may be resolved, but in case it's not user beware.
 
-The file path shown in the beginning (```/DIR/A```) is buggy and should not be relied upon.
+The file path shown in the beginning (ex ```/DIR/A]```) is buggy and should not be relied upon.
