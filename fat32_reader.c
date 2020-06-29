@@ -858,9 +858,16 @@ int main(int argc, char *argv[])
 		else if(strncmp(cmd_line,"read",4)==0) {
 			printf("Going to read!\n");
 			char* file = convertToShortName(strtok(&cmd_line[5], " "));
-			int startingPosition = atoi(strtok(NULL, " "));
-			int numBytes = atoi(strtok(NULL, " "));
-			fileread(file, startingPosition, numBytes);
+			char* strStartingPosition = strtok(NULL, " ");
+			char* strNumBytes = strtok(NULL, " ");
+			if(strStartingPosition != NULL && strNumBytes != NULL){
+				int startingPosition = atoi(strStartingPosition);
+				int numBytes = atoi(strNumBytes);
+				fileread(file, startingPosition, numBytes);
+			}
+			else{
+				printf("Error: improper formatting.\nUse read <filename> <startingPosition> <numBytes>");
+			}
 		}
 		
 		else if(strncmp(cmd_line,"size",4)==0) {
