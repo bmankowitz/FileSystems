@@ -4,7 +4,9 @@ The fat32 reader by Benjamin Mankowitz and Ari Roffe is a simple C program that 
 ## Table of Contents
 Requirements - The folder containing all the known requirements
 Slides - The folder containing helpful slides from class
+
 fat32.img - A sample fat32 image
+
 fat32y.img - A second fat32 image
 
 ## Compiling the program
@@ -28,4 +30,4 @@ When creating new files, it is possible to enter an invalid file name. That file
 
 Not all allocated memory is freed.
 
-There was an issue where mkdir would occasionally overwrite other data in the fat32 image. I can not reproduce the issue, so it may be resolved, but in case it's not user beware.
+There was an issue where mkdir would occasionally overwrite other data in the fat32 image. I can not reproduce the issue, so it is probably resolved, but I'm not 100% sure.
