@@ -413,7 +413,7 @@ void init(char* argv){
 		}
 		//now to print out the saved strings in reverse order:
 		printf("\n/");
-		for(;bufPos >= 0; bufPos--){
+		for(bufPos--; bufPos >= 0; bufPos--){
 			if(buf[bufPos] == NULL){
 				continue;
 			}
