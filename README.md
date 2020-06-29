@@ -16,18 +16,20 @@ Start the program with ```./fat32_reader <FILENAME>```. For example:
 ./fat32_reader fat32y.img
 ```
 ## Challenges
-This was my first project with far less communication that previously. Specifically, although we had git set up and assigned different issues to each person, there was still some duplicated work. For example, there are two methods to convert a filename into the short name standard. Additionally, the different coding styles occasoinally clash with different method naming styles and a mix of camelCase and snake_case. Overall this was a learning experience and I hope to be able to collaborate more effectively in the future.
-
-This is all separate from the general issues(less time, more responsibilities at home, etc) arising from the Covid-19 pandemic and the crunch of finals.
+This was my first project working remotely, so communication could have been better. Despite the fact that we had git set up and each worked on a single issue, there was still some duplicated work. For example, there were two methods to convert a filename into the fat32 short name. Additionally, we didn't define a set style so we have a mix of camelCase and snake_case. Overall this was a learning experience and I hope to be able to collaborate more effectively in the future.
 
 ## Additional Sources
 Outside sources were used. Any sources besides the textbook/slides are noted in the comments section
 
 ## Known Bugs
-The program is currently unable to handle filenames longer than 11 characters
+The program is currently unable to handle filenames longer than 11 characters.
 
-With certain file sizes, the ls command may include "junk" characters with the file names
+When creating new files, it is possible to enter an invalid file name. That file will be created, but will not be deletable.
 
-Not all allocated memory is freed
+Not all allocated memory is freed.
 
 Read might not work for nonconsecutive sectors, and will segfault if called incorrectly.
+
+There was an issue where mkdir would occasionally overwrite other data in the fat32 image. I can not reproduce the issue, so it may be resolved, but in case it's not user beware.
+
+The file path shown in the beginning (ex ```/DIR/A]```) is buggy and should not be relied upon.
