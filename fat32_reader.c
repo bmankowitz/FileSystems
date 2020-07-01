@@ -268,7 +268,6 @@ void init(char* argv){
 		}
 		strcat(baseName, extension);
 		free(extension);
-		//printf("\nexiting convertToShortName");
 
 		return baseName; //and the extension added by strcat
 	}
@@ -283,7 +282,6 @@ void init(char* argv){
  */
 
 	char* convertToPrettyName(char* input) {
-		//printf("\nInside of convertToShortName");
 		char* name = calloc(sizeof(char), 12);//+1 for the null terminator
 		int namePos = 0;
 		int inputPos = 0;
@@ -299,7 +297,7 @@ void init(char* argv){
 				name[namePos]='.';
 				name[++namePos] = tolower(input[inputPos++]);
 			}
-			else {//white space
+			else {//whitespace
 				inputPos++;
 				namePos--;
 			}
@@ -315,8 +313,6 @@ void init(char* argv){
 		}
 	}
 	uint32_t getOffset(struct directory thisDir){
-		//((N - 2) * BPB_SecPerClus*BPB_BytesPerSec) + fat_bytes+bytes_for_reserved;
-		//((getCluster(dir[i]) - 2) * BPB_BytesPerSec*BPB_SecPerClus) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);//see below for it fleshed out
 		return ((getCluster(thisDir) - 2) * BPB_SecPerClus*BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_RsvdSecCnt) + (BPB_NumFATS * BPB_FATSz32 * BPB_BytesPerSec);
 	}
 	uint32_t getOffsetInt(uint32_t currentCluster){
@@ -342,7 +338,7 @@ void init(char* argv){
 		return fat[currentCluster];
 	}
 	uint32_t getFirstFreeCluster(){
-		//if i < 5, there seem to be some issues with overwriting data.
+		//if i < 5, there may be some issues with overwriting data.
 		for(int i=5; i < MAX_FAT; i++){
 			if(fat[i] == FREE) return i;
 		}
@@ -356,7 +352,6 @@ void init(char* argv){
 		}
 		//invalid cluster number:
 		return false;
-
 	}
 
 	void refreshDir(uint32_t cluster){
@@ -376,10 +371,9 @@ void init(char* argv){
 	
 		//clean remove entries that do not exist in this directory by assuming
 		//that a blank space means the end of the directory:
-
 		for(int i = 0; i < MAX_DIR; i++){
 			//determine if dir exists:
-			//TODO: unclear if strncmp is working correctly
+			//TODO: check also if the first bute is 0xE5... In a future version
 			if(strncmp(stagingDir[i].DIR_Name, "",11) == 0 &&
 				stagingDir[i].DIR_Attr == 0 &&
 				stagingDir[i].DIR_FileSize == 0 &&
@@ -574,7 +568,7 @@ int size(char* path, int shouldPrint){
 	for(int i = 0; i < MAX_DIR; i++){
 		if(!strncmp(path, dir[i].DIR_Name, 11) /* TODO: show hidden files? */){
 			if(dir[i].DIR_Attr & ATTR_DIRECTORY){
-				if(shouldPrint) printf("This is a folder");
+				if(shouldPrint) printf("This is a folder\nSize is %d",dir[i].DIR_FileSize);
 				return 0;
 			}
 			if(shouldPrint) printf("Size is %d", dir[i].DIR_FileSize);
@@ -614,7 +608,6 @@ void fileread(char* file, int startPos, int numBytes){
 			}
 
 			//find the position of the file to read:
-			// uint32_t N;//starting cluster
 			char buf[numBytes+1/*null terminator*/];
 			//New plan: read in the entire cluster that has any relevant byte, then only print out
 			//the parts that we need. Something like printf(buf[startingPosition]
@@ -640,7 +633,6 @@ void fileread(char* file, int startPos, int numBytes){
 				cluster = getNextCluster(cluster);
 				bytesToSkip += bytesPerCluster;
 			}
-
 			buf[numBytes] = '\0';
 			printf("\n%s", buf + bufInitialOffset);
 			return;
@@ -661,7 +653,7 @@ void volume(){
 
 void filemkdir(char* file){
 	//read the fileread and cd commands to figure out how to get the location/offset.
-	//Once we have the offset, we need to add a new dir entry into the dir table (optional)
+	//Once we have the offset, we need to add a new dir entry into the dir table
 	//and write it back to the underlying file.
 
 	//check if file exists:
@@ -698,8 +690,6 @@ void filemkdir(char* file){
 	dotdot = dir[0];
 	memcpy(dotdot.DIR_Name, "..         ", 11);
 
-
-	
 	//set the fat as taken:
 	if (!setCluster(newDirCluster, EOC)){
  		printf("ERROR: unable to set fat table cluster");
@@ -742,17 +732,15 @@ void filemkdir(char* file){
 	fseek(fd, bytes_for_reserved, SEEK_SET);
 	sizeTDummy = fwrite(fat, 4 /*bytes*/, fat_bytes/4, fd);
 	
-	//for some reason the file doesn't appear until we start from the very beginning
+	//for some reason the file doesn't appear unless we start from the very beginning
 	refreshDir(BPB_RootCluster);
-	//refresh the directory:
+	//refresh the current directory:
 	refreshDir(getCluster(dotdot));
-
 	return;
 }
 
 void filermdir(char* file){
-	//either set the flags to deleted and write back or manually set to 0s and remove FAT entry
-	//this one should be easier than mkdir.
+	// set the first byte to deleted and write back. remove FAT entry and write back.
 
 	//check if file exists:
 	for(int i = 0; i < MAX_DIR; i++){
@@ -764,7 +752,6 @@ void filermdir(char* file){
 					printf("Error: '%s' is not a directory", convertToPrettyName(file));
 					return;
 				}
-
 			//check if empty:
 				if(!cd(file, 0)) printf("Error: '%s' is malformed", convertToPrettyName(file));
 				if(!(memcmp(&dir[2], &zeroDir, sizeof(struct directory)) || dir[2].DIR_Name[0] != 0x0)){
@@ -773,7 +760,6 @@ void filermdir(char* file){
 					return;
 				}
 				if(!cd(convertToShortName(".."), 0)) printf("Error: '%s' is malformed", convertToPrettyName(file));
-
 			//set DIR_Name[0] to 0x0:
 				//TODO: in a future version, implement 0xe5 meaning end of dir cluster. also change refreshDir
 				dir[i].DIR_Name[0] = (char) 0x0;
@@ -798,8 +784,7 @@ void filermdir(char* file){
 					if((cluster = getNextCluster(cluster)) == EOC){
 						//found the last cluster. set all previous entries to free
 						i--;
-						for(;i > 0; i--){
-							
+						for(;i > 0; i--){			
 							setCluster(clustersToBeCleared[i], FREE);
 						}
 						//write the new FAT to fat32 img
@@ -884,10 +869,12 @@ int main(int argc, char *argv[])
 			printf("Going to cd into %s\n", &cmd_line[3]);//fix this line
 			cd(convertToShortName(&cmd_line[3]), true);
 		}
+
 		else if(strncmp(cmd_line,"mkdir",5)==0) {
 			printf("Going to mkdir!\n");
 			filemkdir(convertToShortName(&cmd_line[6]));
 		}
+		
 		else if(strncmp(cmd_line,"rmdir",5)==0) {
 			printf("Going to rmdir!\n");
 			filermdir(convertToShortName(&cmd_line[6]));		
